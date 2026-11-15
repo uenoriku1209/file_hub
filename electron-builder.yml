@@ -1,0 +1,44 @@
+appId: com.filehub.app
+productName: File Hub
+directories:
+  buildResources: build
+files:
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!scripts/*'
+  - '!electron.vite.config.{js,ts,mjs,cjs}'
+  - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md,使い方.md}'
+  - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+asarUnpack:
+  - resources/**
+  # ターミナル用のネイティブモジュール (conpty.dll などを含む) は asar の外に置く
+  - node_modules/node-pty/**
+win:
+  executableName: FileHub
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  artifactName: FileHub-${version}-setup.${ext}
+  shortcutName: ${productName}
+  uninstallDisplayName: ${productName}
+  createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: false
+dmg:
+  artifactName: ${name}-${version}.${ext}
+linux:
+  target:
+    - AppImage
+  maintainer: filehub
+  category: Utility
+appImage:
+  artifactName: ${name}-${version}.${ext}
+# node-pty はビルド済みバイナリ (N-API) を同梱しているので再ビルド不要
+npmRebuild: false
+publish: null

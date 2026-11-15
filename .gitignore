@@ -1,0 +1,26 @@
+node_modules
+dist
+out
+.DS_Store
+.eslintcache
+*.log*
+resources/pdfjs
+
+# Node.js
+node_modules/
+dist/
+.env
+.env.local
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
