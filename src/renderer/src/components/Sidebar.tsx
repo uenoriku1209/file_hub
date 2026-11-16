@@ -1,11 +1,10 @@
-import { FileText, Code2, SquareTerminal, Sun, Moon } from 'lucide-react'
+import { FileText, Code2, Sun, Moon } from 'lucide-react'
 
-export type PageId = 'office' | 'code' | 'terminal'
+export type PageId = 'office' | 'code'
 
 const NAV: { id: PageId; label: string; icon: typeof FileText }[] = [
   { id: 'office', label: 'Office', icon: FileText },
-  { id: 'code', label: 'Code', icon: Code2 },
-  { id: 'terminal', label: 'Terminal', icon: SquareTerminal }
+  { id: 'code', label: 'Code', icon: Code2 }
 ]
 
 interface Props {

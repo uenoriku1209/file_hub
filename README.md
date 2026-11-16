@@ -8,7 +8,7 @@
 |---|---|
 | **Office** | PDF / Word / Excel / PowerPoint / CSV / 画像 / テキストのプレビュー。「Word で編集」などのボタンで既定の Office アプリを起動。「新規作成」で Word・Excel・PowerPoint を作成（画像の挿入、Excel のシート名・シート数、PowerPoint のスライド数・タイトル、Word のページ数を指定可能） |
 | **Code** | `.ts` `.tsx` `.cpp` `.py` など各種ソースコードを Markdown のコードブロックとしてハイライト表示（`.md` は整形表示）。「Code Edit」で VS Code を起動 |
-| **Terminal** | アプリ内ターミナル（PowerShell / コマンドプロンプト / PowerShell 7 / Git Bash）。複数タブ対応。Code 画面の「ターミナル」ボタンでそのフォルダから開ける |
+| **ターミナル** | Office / Code 画面のプレビュー欄上部のタブで「ターミナル」に切り替えると、閲覧中のフォルダで作業できる。「追従」オンならフォルダを移動すると自動で `cd`。シェル（PowerShell / コマンドプロンプト / PowerShell 7 / Git Bash）の切替・再起動に対応。画面を切り替えても動き続ける |
 | **PDF化** | 各ファイルの「PDF化」ボタン、または「一括PDF化」で一覧に表示中のファイル（タグ・検索で絞り込んだもの）をまとめて変換。保存先（同じ場所 / 「PDF」フォルダ / 任意のフォルダ）と、同名ファイルの扱い（別名 / 上書き）を選択可能 |
 | 共通 | フォルダツリー、拡張子タグでの絞り込み（複数選択可）、ファイル名検索、サブフォルダを含めた一括検索、並び替え、ライト / ダークモード切替（左下のスイッチ） |
 
@@ -98,9 +98,9 @@ src/main/terminal.ts                 … ターミナル (node-pty)
 src/main/vscode.ts                   … VS Code の起動
 src/main/pdfConvert.ts               … PDF 変換 (Office / LibreOffice / 内蔵)
 src/renderer/src/assets/app.css      … デザイン（ライト / ダーク）
-src/renderer/src/components/         … サイドバー、フォルダツリー、ファイル一覧、新規作成・PDF変換ダイアログ
+src/renderer/src/components/         … サイドバー、フォルダツリー、ファイル一覧、ターミナル、新規作成・PDF変換ダイアログ
 src/renderer/src/lib/                … 拡張子タグ定義、表示用ユーティリティ、通知、PDF用HTML生成
-src/renderer/src/pages/              … Office / Code / Terminal の各画面
+src/renderer/src/pages/              … Office / Code の各画面
 src/renderer/src/previews/           … 各ファイル形式のプレビュー
 ```
 

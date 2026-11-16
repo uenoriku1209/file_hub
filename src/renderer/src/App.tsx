@@ -3,7 +3,6 @@ import type { FsEntry } from '../../shared/types'
 import { Sidebar, type PageId } from './components/Sidebar'
 import { OfficePage } from './pages/OfficePage'
 import { CodePage } from './pages/CodePage'
-import { TerminalPage } from './pages/TerminalPage'
 import { ToastProvider, useToast } from './lib/toast'
 import { errorMessage } from './lib/format'
 
@@ -56,9 +55,8 @@ function Shell(): React.JSX.Element {
     if (saved === 'light' || saved === 'dark') return saved
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-  const [page, setPage] = useState<PageId>(() => (store.get('page') as PageId) || 'office')
+  const [page, setPage] = useState<PageId>(() => (store.get('page') === 'code' ? 'code' : 'office'))
   const [rootDir, setRootDir] = useState<string | null>(() => store.get('rootDir'))
-  const [termRequest, setTermRequest] = useState<{ cwd: string; nonce: number } | null>(null)
 
   const office = useBrowserState(rootDir)
   const code = useBrowserState(rootDir)
@@ -93,11 +91,6 @@ function Shell(): React.JSX.Element {
     }
   }
 
-  const openTerminal = (cwd: string): void => {
-    setTermRequest({ cwd, nonce: Date.now() })
-    setPage('terminal')
-  }
-
   return (
     <div className="app">
       <Sidebar
@@ -107,22 +100,13 @@ function Shell(): React.JSX.Element {
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
       <main className="main">
-        {page === 'office' && <OfficePage rootDir={rootDir} onPickRoot={pickRoot} state={office} />}
-        {page === 'code' && (
-          <CodePage
-            rootDir={rootDir}
-            onPickRoot={pickRoot}
-            state={code}
-            onOpenTerminal={openTerminal}
-          />
-        )}
-        {/* ターミナルはページを切り替えても動き続けるよう常にマウントしておく */}
-        <TerminalPage
-          visible={page === 'terminal'}
-          theme={theme}
-          defaultCwd={rootDir}
-          request={termRequest}
-        />
+        {/* 両ページとも常に表示しておき、切替は非表示にするだけ (ターミナルを止めないため) */}
+        <div className={`page-slot ${page === 'office' ? '' : 'hidden'}`}>
+          <OfficePage rootDir={rootDir} onPickRoot={pickRoot} state={office} />
+        </div>
+        <div className={`page-slot ${page === 'code' ? '' : 'hidden'}`}>
+          <CodePage rootDir={rootDir} onPickRoot={pickRoot} state={code} />
+        </div>
       </main>
     </div>
   )

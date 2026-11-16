@@ -14,12 +14,15 @@ import {
   FileCode2,
   FileType2,
   Layers,
+  Eye,
+  SquareTerminal,
   X
 } from 'lucide-react'
 import type { FsEntry } from '../../../shared/types'
 import { type Category, categoryOf } from '../lib/fileTypes'
 import { formatDate, formatSize, basename, parentDir, sepOf, errorMessage } from '../lib/format'
 import { FolderTree } from './FolderTree'
+import { TerminalPanel } from './TerminalPanel'
 import { useToast } from '../lib/toast'
 
 type SortKey = 'name' | 'mtime' | 'size'
@@ -73,6 +76,8 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [tags, setTags] = useState<Set<string>>(new Set())
   const [sort, setSort] = useState<SortKey>('name')
+  const [panel, setPanel] = useState<'preview' | 'terminal'>('preview')
+  const [termMounted, setTermMounted] = useState(false)
 
   // フォルダ内容の読み込み
   useEffect(() => {
@@ -329,7 +334,10 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 <button
                   key={f.path}
                   className={`file-row ${p.selected?.path === f.path ? 'selected' : ''}`}
-                  onClick={() => p.onSelect(f)}
+                  onClick={() => {
+                    p.onSelect(f)
+                    setPanel('preview')
+                  }}
                 >
                   <span className="file-icon" style={{ color: c?.color }}>
                     {fileIcon(c)}
@@ -359,12 +367,37 @@ export function FileBrowser(p: Props): React.JSX.Element {
         </section>
 
         <section className="card preview-card">
-          {p.selected ? (
-            p.renderPreview(p.selected)
-          ) : (
-            <div className="preview-empty">
-              {p.emptyIcon}
-              <p>ファイルを選択するとここに内容が表示されます</p>
+          <div className="panel-tabs">
+            <button
+              className={panel === 'preview' ? 'active' : ''}
+              onClick={() => setPanel('preview')}
+            >
+              <Eye size={15} /> プレビュー
+            </button>
+            <button
+              className={panel === 'terminal' ? 'active' : ''}
+              onClick={() => {
+                setPanel('terminal')
+                setTermMounted(true)
+              }}
+            >
+              <SquareTerminal size={15} /> ターミナル
+            </button>
+          </div>
+          <div className={`panel-body ${panel === 'preview' ? '' : 'hidden'}`}>
+            {p.selected ? (
+              p.renderPreview(p.selected)
+            ) : (
+              <div className="preview-empty">
+                {p.emptyIcon}
+                <p>ファイルを選択するとここに内容が表示されます</p>
+              </div>
+            )}
+          </div>
+          {/* 一度開いたターミナルは、プレビューに戻っても動き続けるよう残しておく */}
+          {termMounted && (
+            <div className={`panel-body ${panel === 'terminal' ? '' : 'hidden'}`}>
+              <TerminalPanel cwd={p.currentDir} visible={panel === 'terminal'} />
             </div>
           )}
         </section>

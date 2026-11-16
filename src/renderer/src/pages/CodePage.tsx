@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderSearch, SquareTerminal, Code2, FileOutput, Files } from 'lucide-react'
+import { FolderSearch, Code2, FileOutput, Files } from 'lucide-react'
 import type { FsEntry } from '../../../shared/types'
 import { PdfConvertModal, pdfConvertible } from '../components/PdfConvertModal'
 import { FileBrowser } from '../components/FileBrowser'
@@ -14,10 +14,9 @@ interface Props {
   rootDir: string | null
   onPickRoot: () => void
   state: BrowserState
-  onOpenTerminal: (cwd: string) => void
 }
 
-export function CodePage({ rootDir, onPickRoot, state, onOpenTerminal }: Props): React.JSX.Element {
+export function CodePage({ rootDir, onPickRoot, state }: Props): React.JSX.Element {
   const toast = useToast()
   const [visibleFiles, setVisibleFiles] = useState<FsEntry[]>([])
   const [pdfTargets, setPdfTargets] = useState<FsEntry[] | null>(null)
@@ -57,13 +56,6 @@ export function CodePage({ rootDir, onPickRoot, state, onOpenTerminal }: Props):
               title="一覧に表示中のファイルをまとめて PDF に変換"
             >
               <Files size={17} /> 一括PDF化{batchTargets.length ? ` (${batchTargets.length})` : ''}
-            </button>
-            <button
-              className="btn"
-              onClick={() => onOpenTerminal(state.currentDir || rootDir!)}
-              title="このフォルダでターミナルを開く"
-            >
-              <SquareTerminal size={17} /> ターミナル
             </button>
           </>
         }
