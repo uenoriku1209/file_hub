@@ -3,6 +3,9 @@ import { execFile } from 'child_process'
 import { promises as fs, existsSync } from 'fs'
 import { join } from 'path'
 import type { GitBranches, GitFile, GitSetupOptions, GitStatus, GitStepLog } from '../shared/git'
+import { explainGitError } from '../shared/git'
+
+export { explainGitError }
 
 const LOCAL_TIMEOUT = 30_000
 const NETWORK_TIMEOUT = 5 * 60_000
@@ -49,56 +52,6 @@ const git = (args: string[], cwd: string, timeout?: number): Promise<RunResult> 
   run('git', args, cwd, timeout)
 
 /** git の英語のエラーを、わかりやすい日本語に */
-export function explainGitError(text: string): string {
-  const t = text.trim()
-  const rules: [RegExp, string][] = [
-    [
-      /NOT_INSTALLED/,
-      'Git がインストールされていません。https://git-scm.com/ からインストールしてください'
-    ],
-    [
-      /Please tell me who you are|empty ident|user\.email/i,
-      'コミットする人の名前とメールアドレスが未設定です。上の「名前とメールアドレス」を登録してください'
-    ],
-    [
-      /Authentication failed|could not read Username|terminal prompts disabled|Permission denied|403/i,
-      'リモートへのログイン（認証）に失敗しました。ブラウザでのログイン画面が出た場合はログインしてください。ターミナルで一度 git push を実行してログインを済ませると、以降はここから送れます'
-    ],
-    [
-      /non-fast-forward|fetch first|rejected/i,
-      'リモートに、手元にない変更があります。先に「プル」で取り込んでからプッシュしてください'
-    ],
-    [
-      /Not possible to fast-forward|diverged|divergent/i,
-      '手元とリモートの両方に別々の変更があるため、自動では取り込めません。ターミナルで git pull を実行して統合してください'
-    ],
-    [
-      /Repository not found|does not appear to be a git repository|not found/i,
-      'リモートのリポジトリが見つかりません。URL とアクセス権を確認してください'
-    ],
-    [
-      /Could not resolve host|unable to access|Connection timed out|Failed to connect/i,
-      'リモートに接続できません。インターネット接続と URL を確認してください'
-    ],
-    [/nothing to commit|no changes added to commit/i, 'コミットする変更がありません'],
-    [
-      /would be overwritten by checkout|Please commit your changes or stash them/i,
-      'コミットしていない変更があるため、ブランチを切り替えられません。先にコミットしてください'
-    ],
-    [/already exists/i, '同じ名前のものがすでにあります'],
-    [/not a valid branch name|is not a valid/i, 'ブランチ名に使えない文字が含まれています'],
-    [
-      /src refspec .* does not match any/i,
-      'まだコミットがないため、プッシュできません。先にコミットしてください'
-    ],
-    [
-      /時間内に終わらなかった/,
-      '時間内に終わらなかったため中止しました（ログイン画面が裏に隠れていないか確認してください）'
-    ]
-  ]
-  for (const [re, msg] of rules) if (re.test(t)) return `${msg}\n\n詳細: ${t.slice(0, 400)}`
-  return t.slice(0, 600) || 'Git の操作に失敗しました'
-}
 
 async function must(args: string[], cwd: string, timeout?: number): Promise<string> {
   const r = await git(args, cwd, timeout)
@@ -278,6 +231,10 @@ export async function gitAddRemote(dir: string, url: string, name = 'origin'): P
   )
 }
 
+export async function gitRemoveRemote(dir: string, name: string): Promise<void> {
+  await must(['remote', 'remove', name], dir)
+}
+
 export async function gitSetIdentity(dir: string, name: string, email: string): Promise<void> {
   if (!name.trim() || !email.trim()) throw new Error('名前とメールアドレスを入力してください')
   await must(['config', '--global', 'user.name', name.trim()], dir)
@@ -386,8 +343,9 @@ export async function gitSetup(
     })
   } else if (o.remoteMode === 'url' && o.remoteUrl.trim()) {
     await step('リモートを登録（origin）', () => gitAddRemote(dir, o.remoteUrl))
-    await step(`プッシュ（origin/${o.branch} を追跡）`, () =>
-      must(['push', '-u', 'origin', o.branch], dir, NETWORK_TIMEOUT)
-    )
+    if (o.push !== false)
+      await step(`プッシュ（origin/${o.branch} を追跡）`, () =>
+        must(['push', '-u', 'origin', o.branch], dir, NETWORK_TIMEOUT)
+      )
   }
 }

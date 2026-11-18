@@ -37,7 +37,9 @@ export interface Api {
     commit(dir: string, message: string, files: string[] | 'all'): Promise<string>
     push(dir: string): Promise<string>
     pull(dir: string): Promise<string>
-    addRemote(dir: string, url: string): Promise<void>
+    /** 登録 (同じ名前があれば URL を変更) */
+    addRemote(dir: string, url: string, name?: string): Promise<void>
+    removeRemote(dir: string, name: string): Promise<void>
     setIdentity(dir: string, name: string, email: string): Promise<void>
     setup(dir: string, o: GitSetupOptions): Promise<void>
     onSetupStep(cb: (log: GitStepLog) => void): () => void

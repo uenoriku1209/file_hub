@@ -5,6 +5,7 @@ import '@xterm/xterm/css/xterm.css'
 import { RotateCcw, CornerDownRight, Link2, Link2Off, FolderOpen } from 'lucide-react'
 import type { ShellInfo } from '../../../shared/types'
 import { errorMessage } from '../lib/format'
+import { stripAnsi } from '../lib/ansi'
 
 const THEMES: Record<'light' | 'dark', ITheme> = {
   light: {
@@ -78,7 +79,35 @@ function cdCommand(shellId: string, dir: string): string {
   return `\x15cd '${dir.replace(/'/g, `'\\''`)}'\r`
 }
 
+/** シェルに合わせて引数をクォートする */
+function quoteArg(shellId: string, s: string): string {
+  if (/^[\w./:@=+-]+$/.test(s)) return s
+  if (shellId === 'cmd') return `"${s.replace(/"/g, '')}"`
+  if (shellId === 'powershell' || shellId === 'pwsh') return `'${s.replace(/'/g, "''")}'`
+  return `'${s.replace(/'/g, `'\\''`)}'`
+}
+
+/** 終了の目印を出力するコマンドを付けた 1 行を作る (入力の表示と出力を区別するため、目印は分割して書く) */
+function withDoneMarker(shellId: string, command: string, n: number): string {
+  if (shellId === 'cmd') return `${command} && echo __FH_^DONE_${n}_0__ || echo __FH_^DONE_${n}_1__`
+  if (shellId === 'powershell' || shellId === 'pwsh')
+    return `${command}; Write-Output ('__FH_'+'DONE_${n}_' + [int]$LASTEXITCODE + '__')`
+  return `${command}; echo "__FH_""DONE_${n}_$?__"`
+}
+
+/** Git 画面などから、このターミナルでコマンドを実行するための窓口 */
+export interface TerminalHandle {
+  /** dir に移動して git コマンドを実行する。done は終了コード (中止したら 130) */
+  runGit(dir: string, args: string[]): { done: Promise<number>; cancel: () => void }
+  /** 実行中のコマンドへの入力 (合言葉など) */
+  write(text: string): void
+  /** 出力を受け取る (戻り値で解除) */
+  onOutput(cb: (data: string) => void): () => void
+}
+
 interface Props {
+  /** Git 画面などから操作するための窓口を受け取る */
+  handleRef?: React.MutableRefObject<TerminalHandle | null>
   /** いま閲覧しているフォルダ */
   cwd: string
   /** ターミナルタブが表示されているか */
@@ -87,7 +116,7 @@ interface Props {
   inject?: { text: string; nonce: number } | null
 }
 
-export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Element {
+export function TerminalPanel({ cwd, visible, inject, handleRef }: Props): React.JSX.Element {
   const theme = useTheme()
   const [shells, setShells] = useState<ShellInfo[]>([])
   const [shellId, setShellId] = useState('')
@@ -104,6 +133,11 @@ export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Elemen
   const fitRef = useRef<FitAddon | null>(null)
   const idRef = useRef<number | null>(null)
   const cwdRef = useRef(cwd)
+  const listeners = useRef(new Set<(data: string) => void>())
+  /** Git 画面からのコマンド実行中 (この間はフォルダ追従の cd を送らない) */
+  const busyRef = useRef(false)
+  const runSeq = useRef(0)
+  const afterRun = useRef<() => void>(() => {})
   // 再起動時に「いま閲覧中のフォルダ」で開けるよう最新値を保持 (起動処理より先に実行される)
   useEffect(() => {
     cwdRef.current = cwd
@@ -154,6 +188,7 @@ export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Elemen
       if (id === idRef.current) {
         term.write(data)
         markPrompted(350)
+        listeners.current.forEach((cb) => cb(data))
       }
     })
     const offExit = window.api.terminal.onExit((id) => {
@@ -239,7 +274,7 @@ export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Elemen
 
   // 「フォルダに追従」: ターミナル表示中に閲覧フォルダが変わったら移動する
   useEffect(() => {
-    if (visible && follow && ready && cwd && cwd !== termDir) moveTo(cwd)
+    if (visible && follow && ready && !busyRef.current && cwd && cwd !== termDir) moveTo(cwd)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, follow, ready, cwd])
 
@@ -254,6 +289,67 @@ export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Elemen
       termRef.current?.focus()
     })
   }, [visible])
+
+  // 実行が終わったら、表示中なら閲覧フォルダに戻す
+  afterRun.current = () => {
+    if (visible && follow && cwd) moveTo(cwd)
+  }
+
+  // Git 画面などに窓口を渡す
+  useEffect(() => {
+    if (!handleRef) return
+    if (!prompted || exited) {
+      handleRef.current = null
+      return
+    }
+    const write = (text: string): void => {
+      if (idRef.current !== null) window.api.terminal.write(idRef.current, text)
+    }
+    const onOutput = (cb: (data: string) => void): (() => void) => {
+      listeners.current.add(cb)
+      return () => listeners.current.delete(cb)
+    }
+    handleRef.current = {
+      write,
+      onOutput,
+      runGit(dir, args) {
+        const n = ++runSeq.current
+        const marker = new RegExp(`__FH_DONE_${n}_(\\d+)__`)
+        let buf = ''
+        let finished = false
+        let resolve: (code: number) => void = () => {}
+        const done = new Promise<number>((r) => (resolve = r))
+        const finish = (code: number): void => {
+          if (finished) return
+          finished = true
+          off()
+          busyRef.current = false
+          resolve(code)
+          setTimeout(() => afterRun.current(), 300)
+        }
+        const off = onOutput((data) => {
+          buf = (buf + stripAnsi(data)).slice(-4000)
+          const m = buf.match(marker)
+          if (m) finish(Number(m[1]))
+        })
+        busyRef.current = true
+        write(cdCommand(shellId, dir))
+        setTermDir(dir)
+        const command = ['git', ...args].map((a) => quoteArg(shellId, a)).join(' ')
+        write(withDoneMarker(shellId, command, n) + '\r')
+        return {
+          done,
+          cancel: () => {
+            write('\x03')
+            finish(130)
+          }
+        }
+      }
+    }
+    return () => {
+      handleRef.current = null
+    }
+  }, [handleRef, prompted, exited, shellId])
 
   // コマンド画面からの入力 (複数行はシェルに合わせた区切りで1行にまとめ、実行はしない)
   const injected = useRef(0)

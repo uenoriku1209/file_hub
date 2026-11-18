@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
   RefreshCw,
@@ -16,9 +16,15 @@ import {
   Link2,
   Maximize2,
   Minimize2,
-  X
+  X,
+  SquareTerminal,
+  KeyRound,
+  Square
 } from 'lucide-react'
 import type { GitBranches, GitSetupOptions, GitStatus, GitStepLog } from '../../../shared/git'
+import { explainGitError } from '../../../shared/git'
+import { isShellNoise, stripAnsi, toLines } from '../lib/ansi'
+import type { TerminalHandle } from './TerminalPanel'
 import { basename, errorMessage } from '../lib/format'
 import { useToast } from '../lib/toast'
 
@@ -31,6 +37,8 @@ interface Props {
   onBack: () => void
   /** ファイル一覧の再読み込み (.gitignore を作った場合など) */
   onChanged: () => void
+  /** プッシュ・プルを実行するターミナル */
+  terminal: { ensure: () => Promise<TerminalHandle>; show: () => void }
   maximized: boolean
   onToggleMax: () => void
 }
@@ -44,6 +52,20 @@ const LABEL_CLASS: Record<string, string> = {
   競合: 'del'
 }
 
+/** ターミナルで実行中の操作 */
+interface TermRun {
+  label: string
+  lines: string[]
+  /** 入力待ちの問い合わせ (合言葉など) */
+  prompt: string | null
+  running: boolean
+  code?: number
+}
+
+/** 出力の最後の行が「入力待ち」かどうか */
+const PROMPT_RE =
+  /(passphrase|password|username|パスフレーズ|パスワード)[^\n]*[:：?]\s*$|\(yes\/no[^)]*\)\?\s*$/i
+
 export function GitPanel(p: Props): React.JSX.Element {
   const toast = useToast()
   const [status, setStatus] = useState<GitStatus | null>(null)
@@ -52,6 +74,9 @@ export function GitPanel(p: Props): React.JSX.Element {
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [setupLog, setSetupLog] = useState<GitStepLog[]>([])
+  const [termRun, setTermRun] = useState<TermRun | null>(null)
+  const [secret, setSecret] = useState('')
+  const job = useRef<{ handle: TerminalHandle; cancel: () => void } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -94,6 +119,70 @@ export function GitPanel(p: Props): React.JSX.Element {
     } finally {
       setBusy(null)
     }
+  }
+
+  /** ターミナルで git を実行し、出力をこの画面に表示する (合言葉などの入力欄つき) */
+  const runInTerminal = async (label: string, root: string, args: string[]): Promise<void> => {
+    setError('')
+    setBusy(label)
+    setSecret('')
+    setTermRun({ label, lines: [], prompt: null, running: true })
+    let handle: TerminalHandle
+    try {
+      handle = await p.terminal.ensure()
+    } catch (e) {
+      setError(errorMessage(e))
+      setTermRun(null)
+      setBusy(null)
+      return
+    }
+    let buf = ''
+    const off = handle.onOutput((data) => {
+      buf = (buf + stripAnsi(data)).slice(-20000)
+      const lines = toLines(buf).filter((l) => !isShellNoise(l))
+      const last = toLines(buf).pop()?.trimEnd() ?? ''
+      const prompt = PROMPT_RE.test(last) ? last.trim() : null
+      setTermRun((r) => r && { ...r, lines: lines.slice(-14), prompt })
+    })
+    const run = handle.runGit(root, args)
+    job.current = { handle, cancel: run.cancel }
+    const code = await run.done
+    off()
+    job.current = null
+    setSecret('')
+    setTermRun((r) => r && { ...r, running: false, prompt: null, code })
+    if (code === 0) toast('success', `${label}が完了しました`)
+    else if (code === 130) toast('info', `${label}を中止しました`)
+    else
+      setError(
+        explainGitError(
+          toLines(buf)
+            .filter((l) => !isShellNoise(l))
+            .join('\n')
+            .trim()
+        )
+      )
+    setBusy(null)
+    await load()
+    p.onChanged()
+  }
+
+  const push = (root: string, branch: string | undefined, hasUpstream: boolean): void => {
+    runInTerminal(
+      'プッシュ',
+      root,
+      hasUpstream || !branch ? ['push'] : ['push', '-u', 'origin', branch]
+    )
+  }
+  const pull = (root: string): void => {
+    runInTerminal('プル', root, ['pull', '--ff-only'])
+  }
+
+  const sendSecret = (): void => {
+    if (!job.current) return
+    job.current.handle.write(secret + '\r')
+    setSecret('')
+    setTermRun((r) => r && { ...r, prompt: null })
   }
 
   const header = (
@@ -153,21 +242,108 @@ export function GitPanel(p: Props): React.JSX.Element {
         dir={p.dir}
         busy={busy}
         setBusy={setBusy}
-        onDone={async (log, ok) => {
+        onDone={async (log, ok, pushBranch) => {
           setSetupLog(log)
           await load()
           p.onChanged()
           if (ok) toast('success', 'リポジトリの初期設定が完了しました')
+          // URL を指定した場合のプッシュは、合言葉を入力できるようターミナルで行う
+          if (ok && pushBranch) push(p.dir, pushBranch, false)
         }}
       />
     )
-  else body = <RepoView status={status} branches={branches} busy={busy} act={act} />
+  else
+    body = (
+      <RepoView
+        status={status}
+        branches={branches}
+        busy={busy}
+        act={act}
+        onPush={() => push(status.root!, status.branch, !!status.upstream && !status.upstreamGone)}
+        onPull={() => pull(status.root!)}
+      />
+    )
 
   return (
     <div className="git-panel">
       {header}
       <div className="git-body">
-        {busy && (
+        {termRun && (
+          <div className={`git-section git-run ${termRun.prompt ? 'asking' : ''}`}>
+            <div className="git-section-head">
+              <h3>
+                <SquareTerminal size={15} /> {termRun.label}
+                <span className="muted small-text">
+                  {termRun.running
+                    ? '（ターミナルで実行中）'
+                    : termRun.code === 0
+                      ? '（完了）'
+                      : termRun.code === 130
+                        ? '（中止）'
+                        : '（失敗）'}
+                </span>
+              </h3>
+              <div className="key-row">
+                <button className="btn small" onClick={p.terminal.show}>
+                  <SquareTerminal size={13} /> ターミナルで見る
+                </button>
+                {termRun.running ? (
+                  <button className="btn small" onClick={() => job.current?.cancel()}>
+                    <Square size={12} /> 中止
+                  </button>
+                ) : (
+                  <button
+                    className="btn-icon small"
+                    onClick={() => setTermRun(null)}
+                    title="閉じる"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            </div>
+            {termRun.prompt && (
+              <form
+                className="git-secret"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  sendSecret()
+                }}
+              >
+                <div className="git-secret-label">
+                  <KeyRound size={15} /> {termRun.prompt}
+                </div>
+                <div className="key-row">
+                  <input
+                    className="input"
+                    type={/yes\/no|username/i.test(termRun.prompt) ? 'text' : 'password'}
+                    autoFocus
+                    autoComplete="off"
+                    value={secret}
+                    onChange={(e) => setSecret(e.target.value)}
+                    placeholder={
+                      /yes\/no/i.test(termRun.prompt)
+                        ? '初めて接続する相手です。続けるなら yes と入力'
+                        : /username/i.test(termRun.prompt)
+                          ? 'ユーザー名'
+                          : '合言葉（パスフレーズ）を入力して Enter'
+                    }
+                  />
+                  <button className="btn btn-primary small" type="submit">
+                    送信
+                  </button>
+                </div>
+                <p className="muted small-text">
+                  入力した内容はターミナルにそのまま送られ、保存はされません。
+                </p>
+              </form>
+            )}
+            {termRun.lines.some((l) => l.trim()) && (
+              <pre className="git-run-log">{termRun.lines.join('\n').trim()}</pre>
+            )}
+          </div>
+        )}
+        {busy && !termRun?.running && (
           <div className="git-busy">
             <Loader2 size={16} className="spin" /> {busy}…
           </div>
@@ -233,7 +409,7 @@ function SetupView({
   dir: string
   busy: string | null
   setBusy: (s: string | null) => void
-  onDone: (log: GitStepLog[], ok: boolean) => void
+  onDone: (log: GitStepLog[], ok: boolean, pushBranch?: string) => void
 }): React.JSX.Element {
   const needIdentity = !status.user?.name || !status.user?.email
   const [o, setO] = useState<GitSetupOptions>({
@@ -278,7 +454,8 @@ function SetupView({
       await window.api.git.setup(dir, {
         ...o,
         name: needIdentity ? o.name : '',
-        email: needIdentity ? o.email : ''
+        email: needIdentity ? o.email : '',
+        push: o.remoteMode !== 'url'
       })
     } catch {
       ok = false
@@ -286,7 +463,7 @@ function SetupView({
       off()
       setBusy(null)
     }
-    onDone(log, ok)
+    onDone(log, ok, o.remoteMode === 'url' && o.remoteUrl.trim() ? o.branch.trim() : undefined)
   }
 
   return (
@@ -454,12 +631,16 @@ function RepoView({
   status,
   branches,
   busy,
-  act
+  act,
+  onPush,
+  onPull
 }: {
   status: GitStatus
   branches: GitBranches
   busy: string | null
   act: (label: string, fn: () => Promise<unknown>, done?: string) => Promise<boolean>
+  onPush: () => void
+  onPull: () => void
 }): React.JSX.Element {
   const root = status.root!
   const files = status.files ?? []
@@ -529,9 +710,7 @@ function RepoView({
           <FolderGit2 size={13} /> {root}
         </div>
         {status.remotes?.map((r) => (
-          <div key={r.name} className="git-meta">
-            <Link2 size={13} /> {r.name}: <span className="mono-text">{r.url}</span>
-          </div>
+          <RemoteRow key={r.name} root={root} name={r.name} url={r.url} busy={busy} act={act} />
         ))}
         {!hasRemote && (
           <div className="key-row">
@@ -672,19 +851,19 @@ function RepoView({
           <button
             className="btn btn-primary small"
             disabled={!!busy || !hasRemote || !status.hasCommits}
-            onClick={() => act('プッシュ', () => window.api.git.push(root))}
+            onClick={onPush}
           >
             <Upload size={14} /> プッシュ{status.ahead ? `（${status.ahead}）` : ''}
           </button>
           <button
             className="btn small"
             disabled={!!busy || !hasRemote || !status.upstream}
-            onClick={() => act('プル', () => window.api.git.pull(root))}
+            onClick={onPull}
           >
             <Download size={14} /> プル{status.behind ? `（${status.behind}）` : ''}
           </button>
           <span className="muted small-text">
-            プッシュ: 手元のコミットをリモートへ送る ／ プル: リモートの変更を取り込む
+            ターミナルで実行します。合言葉（パスフレーズ）を聞かれたら、この画面に入力欄が出ます
           </span>
         </div>
       </div>
@@ -768,6 +947,123 @@ function RepoView({
         ) : (
           <p className="muted small-text">まだコミットがありません。</p>
         )}
+      </div>
+    </div>
+  )
+}
+
+/* ---------------- リモート 1 件の表示・変更 ---------------- */
+
+/** SSH 形式の URL (git@host:user/repo.git / ssh://git@host/user/repo.git) を HTTPS 形式に変換 */
+function sshToHttps(url: string): string | null {
+  const u = url.trim()
+  let m = u.match(/^[\w.-]+@([\w.-]+):(?!\/)(.+)$/)
+  if (!m) m = u.match(/^ssh:\/\/[\w.-]+@([\w.-]+)(?::\d+)?\/(.+)$/)
+  if (!m) return null
+  const path = m[2].replace(/^\/+/, '')
+  return `https://${m[1]}/${path.endsWith('.git') ? path : path + '.git'}`
+}
+
+function RemoteRow({
+  root,
+  name,
+  url,
+  busy,
+  act
+}: {
+  root: string
+  name: string
+  url: string
+  busy: string | null
+  act: (label: string, fn: () => Promise<unknown>, done?: string) => Promise<boolean>
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState(url)
+  const https = sshToHttps(url)
+
+  useEffect(() => {
+    setValue(url)
+  }, [url])
+
+  if (editing)
+    return (
+      <div className="key-row">
+        <span className="git-remote-name">{name}</span>
+        <input
+          className="input"
+          value={value}
+          autoFocus
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Escape' && setEditing(false)}
+          placeholder="https://github.com/ユーザー名/リポジトリ名.git"
+          spellCheck={false}
+        />
+        <button
+          className="btn small btn-primary"
+          disabled={!!busy || !value.trim()}
+          onClick={async () => {
+            if (
+              await act(
+                'リモート URL の変更',
+                () => window.api.git.addRemote(root, value, name),
+                `${name} の URL を変更しました`
+              )
+            )
+              setEditing(false)
+          }}
+        >
+          保存
+        </button>
+        <button className="btn small" onClick={() => setEditing(false)}>
+          キャンセル
+        </button>
+      </div>
+    )
+
+  return (
+    <div className="git-remote">
+      <div className="git-meta">
+        <Link2 size={13} /> {name}: <span className="mono-text">{url}</span>
+        {https && <span className="pill warn-pill">SSH</span>}
+      </div>
+      <div className="git-remote-actions">
+        {https && (
+          <button
+            className="btn small btn-primary"
+            disabled={!!busy}
+            title={`${https} に変更します。プッシュ時にブラウザで GitHub にログインできます`}
+            onClick={() =>
+              act(
+                'HTTPS への切り替え',
+                () => window.api.git.addRemote(root, https, name),
+                `${name} を HTTPS に切り替えました`
+              )
+            }
+          >
+            HTTPS に切り替え
+          </button>
+        )}
+        <button className="btn small" disabled={!!busy} onClick={() => setEditing(true)}>
+          URL を変更
+        </button>
+        <button
+          className="btn small"
+          disabled={!!busy}
+          onClick={() => {
+            if (
+              confirm(
+                `リモート「${name}」の登録を解除しますか？（GitHub 上のリポジトリは削除されません）`
+              )
+            )
+              act(
+                'リモートの解除',
+                () => window.api.git.removeRemote(root, name),
+                `${name} の登録を解除しました`
+              )
+          }}
+        >
+          解除
+        </button>
       </div>
     </div>
   )

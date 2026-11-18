@@ -59,7 +59,9 @@ const api: Api = {
       call<string>('git:commit', dir, message, files),
     push: (dir: string) => call<string>('git:push', dir),
     pull: (dir: string) => call<string>('git:pull', dir),
-    addRemote: (dir: string, url: string) => call<void>('git:addRemote', dir, url),
+    addRemote: (dir: string, url: string, name?: string) =>
+      call<void>('git:addRemote', dir, url, name),
+    removeRemote: (dir: string, name: string) => call<void>('git:removeRemote', dir, name),
     setIdentity: (dir: string, name: string, email: string) =>
       call<void>('git:identity', dir, name, email),
     setup: (dir: string, o: GitSetupOptions) => call<void>('git:setup', dir, o),

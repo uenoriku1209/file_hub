@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Search,
   FolderOpen,
@@ -26,7 +26,7 @@ import type { FsEntry } from '../../../shared/types'
 import { type Category, categoryOf } from '../lib/fileTypes'
 import { formatDate, formatSize, basename, parentDir, sepOf, errorMessage } from '../lib/format'
 import { FolderTree } from './FolderTree'
-import { TerminalPanel } from './TerminalPanel'
+import { TerminalPanel, type TerminalHandle } from './TerminalPanel'
 import { GitPanel } from './GitPanel'
 import { useToast } from '../lib/toast'
 
@@ -112,6 +112,17 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const [gitMounted, setGitMounted] = useState(false)
   const [maximized, setMaximized] = useState<MaxTarget>(null)
   const [newFolder, setNewFolder] = useState<string | null>(null)
+  const termHandle = useRef<TerminalHandle | null>(null)
+
+  /** ターミナルを (まだなら裏で) 起動し、使えるようになるまで待つ */
+  const ensureTerminal = async (): Promise<TerminalHandle> => {
+    setTermMounted(true)
+    for (let i = 0; i < 200; i++) {
+      if (termHandle.current) return termHandle.current
+      await new Promise((r) => setTimeout(r, 100))
+    }
+    throw new Error('ターミナルを起動できませんでした。ターミナルタブを開いて確認してください')
+  }
 
   const toggleMax = (t: Exclude<MaxTarget, null>): void => setMaximized((m) => (m === t ? null : t))
 
@@ -522,6 +533,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 cwd={p.currentDir}
                 visible={panel === 'terminal'}
                 inject={terminalInject}
+                handleRef={termHandle}
               />
             </div>
           )}
@@ -533,6 +545,13 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 backLabel={backPanel === 'terminal' ? 'ターミナル' : 'プレビュー'}
                 onBack={() => setPanel(backPanel)}
                 onChanged={p.onRefresh}
+                terminal={{
+                  ensure: ensureTerminal,
+                  show: () => {
+                    setBackPanel('terminal')
+                    setPanel('terminal')
+                  }
+                }}
                 maximized={maximized === 'panel'}
                 onToggleMax={() => toggleMax('panel')}
               />

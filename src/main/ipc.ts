@@ -10,6 +10,7 @@ import {
   gitPush,
   gitPull,
   gitAddRemote,
+  gitRemoveRemote,
   gitSetIdentity,
   gitSetup
 } from './git'
@@ -124,7 +125,10 @@ export function registerIpc(): void {
   )
   handle('git:push', (_e, dir: string) => gitPush(dir))
   handle('git:pull', (_e, dir: string) => gitPull(dir))
-  handle('git:addRemote', (_e, dir: string, url: string) => gitAddRemote(dir, url))
+  handle('git:addRemote', (_e, dir: string, url: string, name?: string) =>
+    gitAddRemote(dir, url, name || 'origin')
+  )
+  handle('git:removeRemote', (_e, dir: string, name: string) => gitRemoveRemote(dir, name))
   handle('git:identity', (_e, dir: string, name: string, email: string) =>
     gitSetIdentity(dir, name, email)
   )
