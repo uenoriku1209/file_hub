@@ -10,6 +10,10 @@
 | **Code** | `.ts` `.tsx` `.cpp` `.py` など各種ソースコードを Markdown のコードブロックとしてハイライト表示（`.md` は整形表示）。「Code Edit」で VS Code を起動 |
 | **ターミナル** | Office / Code 画面のプレビュー欄上部のタブで「ターミナル」に切り替えると、閲覧中のフォルダで作業できる。「追従」オンならフォルダを移動すると自動で `cd`。シェル（PowerShell / コマンドプロンプト / PowerShell 7 / Git Bash）の切替・再起動に対応。画面を切り替えても動き続ける |
 | **PDF化** | 各ファイルの「PDF化」ボタン、または「一括PDF化」で一覧に表示中のファイル（タグ・検索で絞り込んだもの）をまとめて変換。保存先（同じ場所 / 「PDF」フォルダ / 任意のフォルダ）と、同名ファイルの扱い（別名 / 上書き）を選択可能 |
+| **コマンド** | 左のタブ「コマンド」。よく使うコマンドを「コマンド・内容」で登録して一覧（検索・編集・削除・コピー）。▶ ボタンで直前に開いていた画面のターミナルに入力（Enter は押さないので確認してから実行） |
+| **Git** | 右上の Git ボタン（枝分かれのアイコン）で、プレビュー欄が Git 画面に切り替わる（「戻る」でターミナル / プレビューに戻る）。リポジトリの状態確認、変更ファイルを選んでコミット、プッシュ / プル、ブランチの切り替え・作成。Git 管理されていないフォルダでは初期設定画面（リポジトリ作成・ブランチ名・.gitignore・初回コミット・リモート URL の登録または GitHub CLI での新規作成・プッシュ）を表示し、終わると通常の Git 画面に移る |
+| **大画面表示** | フォルダツリー・ファイル一覧・プレビュー / ターミナル / Git の各欄右上の ⤢ ボタンで、その欄だけを画面いっぱいに表示（もう一度押すか Esc で戻る） |
+| **フォルダ作成** | ファイル一覧上部のフォルダ＋ボタンで、表示中のフォルダの中に新しいフォルダを作成 |
 | 共通 | フォルダツリー、拡張子タグでの絞り込み（複数選択可）、ファイル名検索、サブフォルダを含めた一括検索、並び替え、ライト / ダークモード切替（左下のスイッチ） |
 
 ---
@@ -88,7 +92,7 @@ zip の中身から、以下をテンプレートにコピーしてください�
 
 ```
 scripts/copy-pdfjs-assets.mjs        … 日本語PDF用のフォントデータを resources/pdfjs にコピー
-src/shared/                          … 型定義 (types.ts, api.ts, pdf.ts)
+src/shared/                          … 型定義 (types.ts, api.ts, pdf.ts, git.ts)
 src/main/creators.ts                 … Word / Excel / PowerPoint の新規作成
 src/main/fileOps.ts                  … フォルダ一覧・再帰検索・読み込み
 src/main/imageSize.ts                … 画像サイズの取得
@@ -97,10 +101,12 @@ src/main/previews.ts                 … Word / Excel / PowerPoint のプレビ�
 src/main/terminal.ts                 … ターミナル (node-pty)
 src/main/vscode.ts                   … VS Code の起動
 src/main/pdfConvert.ts               … PDF 変換 (Office / LibreOffice / 内蔵)
+src/main/git.ts                      … Git 操作 (状態・コミット・プッシュ・ブランチ・初期設定)
+src/main/commands.ts                 … 登録コマンドの保存
 src/renderer/src/assets/app.css      … デザイン（ライト / ダーク）
 src/renderer/src/components/         … サイドバー、フォルダツリー、ファイル一覧、ターミナル、新規作成・PDF変換ダイアログ
 src/renderer/src/lib/                … 拡張子タグ定義、表示用ユーティリティ、通知、PDF用HTML生成
-src/renderer/src/pages/              … Office / Code の各画面
+src/renderer/src/pages/              … Office / Code / コマンドの各画面
 src/renderer/src/previews/           … 各ファイル形式のプレビュー
 ```
 
@@ -192,6 +198,13 @@ npm run build:win  # dist\FileHub-1.0.0-setup.exe を作成
   旧形式はアプリ内プレビューに対応していません。「〜で編集」ボタンから Office で開けます。
 - **PowerPoint のプレビューがレイアウト通りでない**
   テキストと画像を抜き出した簡易表示です。正確な見た目は「PowerPoint で編集」で確認してください。
+
+- **Git 画面に「Git がインストールされていません」と出る**
+  https://git-scm.com/ から Git for Windows をインストールし、File Hub を再起動してください。
+- **プッシュで「認証に失敗しました」と出る**
+  Git for Windows に付属の Git Credential Manager を使うと、初回プッシュ時にブラウザで GitHub にログインできます。うまくいかない場合は、ターミナルタブで一度 `git push` を実行してログインしてください。
+- **「GitHub に新規作成」が選べない**
+  GitHub CLI（https://cli.github.com/）をインストールし、ターミナルで `gh auth login` を実行してから Git 画面の ↻ を押してください。
 
 ## カスタマイズのヒント
 

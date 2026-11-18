@@ -109,3 +109,18 @@ export async function readBytes(p: string, limit = MAX_READ): Promise<Buffer> {
   }
   return fs.readFile(p)
 }
+
+/** フォルダを作成する (同じ名前があればエラー) */
+export async function createFolder(parent: string, name: string): Promise<string> {
+  const clean = name.trim().replace(/[\\/:*?"<>|]/g, '_')
+  if (!clean || clean === '.' || clean === '..') throw new Error('フォルダ名を入力してください')
+  const target = join(parent, clean)
+  try {
+    await fs.mkdir(target)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST')
+      throw new Error('同じ名前のフォルダ・ファイルがあります', { cause: e })
+    throw e
+  }
+  return target
+}

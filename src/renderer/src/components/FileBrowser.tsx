@@ -16,13 +16,18 @@ import {
   Layers,
   Eye,
   SquareTerminal,
-  X
+  X,
+  Maximize2,
+  Minimize2,
+  FolderPlus,
+  GitBranch
 } from 'lucide-react'
 import type { FsEntry } from '../../../shared/types'
 import { type Category, categoryOf } from '../lib/fileTypes'
 import { formatDate, formatSize, basename, parentDir, sepOf, errorMessage } from '../lib/format'
 import { FolderTree } from './FolderTree'
 import { TerminalPanel } from './TerminalPanel'
+import { GitPanel } from './GitPanel'
 import { useToast } from '../lib/toast'
 
 type SortKey = 'name' | 'mtime' | 'size'
@@ -45,6 +50,30 @@ interface Props {
   emptyIcon: ReactNode
   /** 絞り込み後に表示されているファイル一覧を親に通知 (一括処理用) */
   onVisibleFilesChange?: (files: FsEntry[]) => void
+  /** コマンド画面から送られた、ターミナルに入力する文字列 */
+  terminalInject?: { text: string; nonce: number } | null
+}
+
+type Panel = 'preview' | 'terminal' | 'git'
+type MaxTarget = 'tree' | 'list' | 'panel' | null
+
+/** 大画面化 / 元に戻す ボタン */
+function MaxButton({
+  active,
+  onClick
+}: {
+  active: boolean
+  onClick: () => void
+}): React.JSX.Element {
+  return (
+    <button
+      className="btn-icon small max-btn"
+      onClick={onClick}
+      title={active ? '元の大きさに戻す（Esc）' : '大画面で表示'}
+    >
+      {active ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+    </button>
+  )
 }
 
 export function fileIcon(cat?: Category): ReactNode {
@@ -76,8 +105,53 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [tags, setTags] = useState<Set<string>>(new Set())
   const [sort, setSort] = useState<SortKey>('name')
-  const [panel, setPanel] = useState<'preview' | 'terminal'>('preview')
+  const [panel, setPanel] = useState<Panel>('preview')
+  // Git 画面の「戻る」で戻る先 (プレビュー or ターミナル)
+  const [backPanel, setBackPanel] = useState<'preview' | 'terminal'>('preview')
   const [termMounted, setTermMounted] = useState(false)
+  const [gitMounted, setGitMounted] = useState(false)
+  const [maximized, setMaximized] = useState<MaxTarget>(null)
+  const [newFolder, setNewFolder] = useState<string | null>(null)
+
+  const toggleMax = (t: Exclude<MaxTarget, null>): void => setMaximized((m) => (m === t ? null : t))
+
+  // Esc で大画面表示をやめる
+  useEffect(() => {
+    if (!maximized) return
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && !(e.target as HTMLElement)?.closest?.('.xterm')) setMaximized(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [maximized])
+
+  // コマンド画面から送られたらターミナルを開く
+  const { terminalInject } = p
+  useEffect(() => {
+    if (!terminalInject) return
+    setPanel('terminal')
+    setTermMounted(true)
+  }, [terminalInject])
+
+  const openGit = (): void => {
+    if (panel !== 'git') setBackPanel(panel)
+    setPanel('git')
+    setGitMounted(true)
+  }
+
+  const createFolder = async (): Promise<void> => {
+    const name = newFolder?.trim()
+    if (!name) return setNewFolder(null)
+    try {
+      const path = await window.api.createFolder(p.currentDir, name)
+      setNewFolder(null)
+      toast('success', `フォルダ「${name}」を作成しました`)
+      p.onRefresh()
+      p.onCurrentDir(path)
+    } catch (e) {
+      toast('error', errorMessage(e))
+    }
+  }
 
   // フォルダ内容の読み込み
   useEffect(() => {
@@ -215,6 +289,13 @@ export function FileBrowser(p: Props): React.JSX.Element {
             <RefreshCw size={17} className={loading ? 'spin' : ''} />
           </button>
           {p.headerActions}
+          <button
+            className={`btn-icon git-btn ${panel === 'git' ? 'on' : ''}`}
+            onClick={() => (panel === 'git' ? setPanel(backPanel) : openGit())}
+            title="Git（リポジトリの確認・コミット・プッシュ）"
+          >
+            <GitBranch size={18} />
+          </button>
         </div>
       </header>
 
@@ -257,9 +338,12 @@ export function FileBrowser(p: Props): React.JSX.Element {
         </div>
       </div>
 
-      <div className="browser">
+      <div className={`browser ${maximized ? `max max-${maximized}` : ''}`}>
         <section className="card tree-card">
-          <div className="card-title">フォルダ</div>
+          <div className="card-title row">
+            <span>フォルダ</span>
+            <MaxButton active={maximized === 'tree'} onClick={() => toggleMax('tree')} />
+          </div>
           <FolderTree
             root={p.rootDir}
             current={p.currentDir}
@@ -309,8 +393,42 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 <option value="mtime">更新日順</option>
                 <option value="size">サイズ順</option>
               </select>
+              <button
+                className="btn-icon small"
+                onClick={() => setNewFolder('')}
+                title="このフォルダの中に新しいフォルダを作成"
+              >
+                <FolderPlus size={15} />
+              </button>
+              <MaxButton active={maximized === 'list'} onClick={() => toggleMax('list')} />
             </div>
           </div>
+
+          {newFolder !== null && (
+            <div className="inline-form">
+              <FolderPlus size={16} />
+              <input
+                className="input"
+                autoFocus
+                value={newFolder}
+                placeholder={`「${basename(p.currentDir)}」の中に作るフォルダ名`}
+                onChange={(e) => setNewFolder(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) createFolder()
+                  if (e.key === 'Escape') {
+                    e.stopPropagation()
+                    setNewFolder(null)
+                  }
+                }}
+              />
+              <button className="btn small btn-primary" onClick={createFolder}>
+                作成
+              </button>
+              <button className="btn small" onClick={() => setNewFolder(null)}>
+                キャンセル
+              </button>
+            </div>
+          )}
 
           <div className="file-list">
             {visibleFolders.map((f) => (
@@ -367,22 +485,25 @@ export function FileBrowser(p: Props): React.JSX.Element {
         </section>
 
         <section className="card preview-card">
-          <div className="panel-tabs">
-            <button
-              className={panel === 'preview' ? 'active' : ''}
-              onClick={() => setPanel('preview')}
-            >
-              <Eye size={15} /> プレビュー
-            </button>
-            <button
-              className={panel === 'terminal' ? 'active' : ''}
-              onClick={() => {
-                setPanel('terminal')
-                setTermMounted(true)
-              }}
-            >
-              <SquareTerminal size={15} /> ターミナル
-            </button>
+          <div className={`panel-tabs-row ${panel === 'git' ? 'hidden' : ''}`}>
+            <div className="panel-tabs">
+              <button
+                className={panel === 'preview' ? 'active' : ''}
+                onClick={() => setPanel('preview')}
+              >
+                <Eye size={15} /> プレビュー
+              </button>
+              <button
+                className={panel === 'terminal' ? 'active' : ''}
+                onClick={() => {
+                  setPanel('terminal')
+                  setTermMounted(true)
+                }}
+              >
+                <SquareTerminal size={15} /> ターミナル
+              </button>
+            </div>
+            <MaxButton active={maximized === 'panel'} onClick={() => toggleMax('panel')} />
           </div>
           <div className={`panel-body ${panel === 'preview' ? '' : 'hidden'}`}>
             {p.selected ? (
@@ -397,7 +518,24 @@ export function FileBrowser(p: Props): React.JSX.Element {
           {/* 一度開いたターミナルは、プレビューに戻っても動き続けるよう残しておく */}
           {termMounted && (
             <div className={`panel-body ${panel === 'terminal' ? '' : 'hidden'}`}>
-              <TerminalPanel cwd={p.currentDir} visible={panel === 'terminal'} />
+              <TerminalPanel
+                cwd={p.currentDir}
+                visible={panel === 'terminal'}
+                inject={terminalInject}
+              />
+            </div>
+          )}
+          {gitMounted && (
+            <div className={`panel-body ${panel === 'git' ? '' : 'hidden'}`}>
+              <GitPanel
+                dir={p.currentDir}
+                active={panel === 'git'}
+                backLabel={backPanel === 'terminal' ? 'ターミナル' : 'プレビュー'}
+                onBack={() => setPanel(backPanel)}
+                onChanged={p.onRefresh}
+                maximized={maximized === 'panel'}
+                onToggleMax={() => toggleMax('panel')}
+              />
             </div>
           )}
         </section>

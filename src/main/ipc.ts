@@ -1,7 +1,20 @@
 import { app, dialog, ipcMain, shell, BrowserWindow } from 'electron'
 import { promises as fs } from 'fs'
 import { join, normalize, sep } from 'path'
-import { listDir, scanDir, readBytes } from './fileOps'
+import { listDir, scanDir, readBytes, createFolder } from './fileOps'
+import {
+  gitStatus,
+  gitBranches,
+  gitSwitch,
+  gitCommit,
+  gitPush,
+  gitPull,
+  gitAddRemote,
+  gitSetIdentity,
+  gitSetup
+} from './git'
+import { loadCommands, saveCommands } from './commands'
+import type { GitSetupOptions, SavedCommand } from '../shared/git'
 import { previewDocx, previewXlsx, previewPptx } from './previews'
 import { createFile } from './creators'
 import { openInVSCode } from './vscode'
@@ -93,6 +106,33 @@ export function registerIpc(): void {
   handle('pdf:engines', () => detectEngines())
   handle('pdf:convert', (_e, p: string, o: PdfOptions) => convertToPdf(p, o))
   handle('pdf:fromHtml', (_e, html: string, o: PdfHtmlOptions) => htmlToPdf(html, o))
+
+  handle('fs:mkdir', (_e, parent: string, name: string) => createFolder(parent, name))
+
+  /* ---------- コマンド一覧 ---------- */
+  handle('commands:load', () => loadCommands())
+  handle('commands:save', (_e, list: SavedCommand[]) => saveCommands(list))
+
+  /* ---------- Git ---------- */
+  handle('git:status', (_e, dir: string) => gitStatus(dir))
+  handle('git:branches', (_e, dir: string) => gitBranches(dir))
+  handle('git:switch', (_e, dir: string, name: string, create: boolean) =>
+    gitSwitch(dir, name, create)
+  )
+  handle('git:commit', (_e, dir: string, message: string, files: string[] | 'all') =>
+    gitCommit(dir, message, files)
+  )
+  handle('git:push', (_e, dir: string) => gitPush(dir))
+  handle('git:pull', (_e, dir: string) => gitPull(dir))
+  handle('git:addRemote', (_e, dir: string, url: string) => gitAddRemote(dir, url))
+  handle('git:identity', (_e, dir: string, name: string, email: string) =>
+    gitSetIdentity(dir, name, email)
+  )
+  handle('git:setup', (e, dir: string, o: GitSetupOptions) =>
+    gitSetup(dir, o, (log) => {
+      if (!e.sender.isDestroyed()) e.sender.send('git:setupStep', log)
+    })
+  )
 
   handle('pty:shells', () => availableShells())
   handle('pty:create', (e, opts: { shellId?: string; cwd?: string; cols: number; rows: number }) =>

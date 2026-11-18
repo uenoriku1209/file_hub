@@ -24,6 +24,8 @@ interface Props {
   rootDir: string | null
   onPickRoot: () => void
   state: BrowserState
+  /** コマンド画面から送られた、ターミナルに入力する文字列 */
+  terminalInject: { text: string; nonce: number } | null
 }
 
 function body(e: FsEntry): React.JSX.Element {
@@ -57,7 +59,12 @@ function body(e: FsEntry): React.JSX.Element {
   }
 }
 
-export function OfficePage({ rootDir, onPickRoot, state }: Props): React.JSX.Element {
+export function OfficePage({
+  rootDir,
+  onPickRoot,
+  state,
+  terminalInject
+}: Props): React.JSX.Element {
   const toast = useToast()
   const [showNew, setShowNew] = useState(false)
   const [visibleFiles, setVisibleFiles] = useState<FsEntry[]>([])
@@ -89,6 +96,7 @@ export function OfficePage({ rootDir, onPickRoot, state }: Props): React.JSX.Ele
         onRefresh={state.refresh}
         emptyIcon={<FileText size={40} strokeWidth={1.4} />}
         onVisibleFilesChange={setVisibleFiles}
+        terminalInject={terminalInject}
         headerActions={
           <>
             <button

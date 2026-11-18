@@ -1695,3 +1695,457 @@ select.input {
   background: var(--grad);
   transition: width 0.3s ease;
 }
+
+/* ==========================================================
+   共通の小物 (今回追加)
+   ========================================================== */
+
+.small-text {
+  font-size: 12px;
+  line-height: 1.6;
+}
+.small-text a {
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.mono-text {
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12px;
+}
+.key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.key-row .input {
+  flex: 1;
+  min-width: 160px;
+}
+.key-row.end {
+  justify-content: flex-end;
+}
+.btn-icon.danger,
+.btn-icon.danger:hover {
+  color: var(--danger);
+}
+.pill.accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.pill.big {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 12.5px;
+  gap: 5px;
+}
+.check.compact {
+  height: auto;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.check.compact input {
+  margin-top: 1px;
+  flex: none;
+}
+.inline-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 14px 10px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  background: var(--card-2);
+}
+.inline-form > svg {
+  color: var(--accent);
+  flex: none;
+}
+.inline-form .input {
+  flex: 1;
+}
+
+/* ---------------- 大画面表示 ---------------- */
+
+.card-title.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-right: 12px;
+}
+.max-btn {
+  flex: none;
+}
+.browser.max {
+  grid-template-columns: 1fr !important;
+}
+.browser.max-tree > :not(.tree-card),
+.browser.max-list > :not(.list-card),
+.browser.max-panel > :not(.preview-card) {
+  display: none;
+}
+.panel-tabs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 14px 0;
+}
+.panel-tabs-row .panel-tabs {
+  flex: 1;
+  margin: 0;
+}
+
+/* ---------------- Git ボタン ---------------- */
+
+.git-btn {
+  color: #f05033;
+}
+.git-btn.on {
+  background: var(--grad);
+  color: #fff;
+}
+
+/* ---------------- コマンド一覧 ---------------- */
+
+.search.wide {
+  width: 360px;
+}
+.cmd-card {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 10px 14px;
+}
+.cmd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 6px 6px 12px;
+  padding: 14px 16px;
+  background: var(--card-2);
+  box-shadow: none;
+}
+.cmd-table {
+  display: flex;
+  flex-direction: column;
+}
+.cmd-row {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.2fr) minmax(200px, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.cmd-row:not(.head):hover {
+  background: var(--card-2);
+}
+.cmd-row.head {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.4px;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin-bottom: 4px;
+}
+.cmd-command {
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--code-bg);
+  box-shadow: var(--inset);
+  font-family: 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text);
+}
+.cmd-desc {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.cmd-actions {
+  display: flex;
+  gap: 6px;
+}
+.cmd-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 50px 20px;
+  color: var(--muted);
+}
+.cmd-empty > svg {
+  color: var(--accent);
+}
+
+/* ---------------- Git 画面 ---------------- */
+
+.git-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.git-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.git-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  min-width: 0;
+}
+.git-title svg {
+  color: #f05033;
+}
+.git-root {
+  font-weight: 500;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--card-2);
+  position: relative;
+}
+.git-busy {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+  font-size: 13px;
+  backdrop-filter: blur(4px);
+}
+.git-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(229, 99, 107, 0.12);
+  color: var(--danger);
+}
+.git-error > svg {
+  flex: none;
+  margin-top: 2px;
+}
+.git-error pre {
+  flex: 1;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12.5px;
+}
+.git-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+.git-section.warn {
+  box-shadow:
+    var(--shadow-sm),
+    inset 0 0 0 1.5px var(--warn);
+}
+.git-section.intro {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+}
+.git-section.intro > svg {
+  color: #f05033;
+  flex: none;
+}
+.git-section h3 {
+  margin: 0;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.git-section h3 svg {
+  color: var(--accent);
+}
+.git-section p {
+  margin: 0;
+}
+.git-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.git-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.git-sync {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.git-sync.warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+.git-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.git-meta svg {
+  flex: none;
+}
+.git-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--card-2);
+}
+.git-files li label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.git-files li:hover {
+  background: var(--accent-soft);
+}
+.git-files input {
+  accent-color: var(--accent);
+}
+.git-badge {
+  flex: none;
+  min-width: 52px;
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+.git-badge.new {
+  background: rgba(37, 168, 101, 0.14);
+  color: #1f9a5c;
+}
+.git-badge.mod {
+  background: rgba(61, 127, 224, 0.14);
+  color: #3d7fe0;
+}
+.git-badge.del {
+  background: rgba(229, 99, 107, 0.14);
+  color: var(--danger);
+}
+.git-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Mono', Consolas, 'Yu Gothic UI', monospace;
+}
+.git-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.git-log li {
+  display: grid;
+  grid-template-columns: 64px 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 4px;
+  font-size: 12.5px;
+  border-bottom: 1px dashed var(--line);
+}
+.git-log-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.git-steps li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 13px;
+}
+.git-steps li > svg {
+  flex: none;
+  margin-top: 3px;
+}
+.git-steps li.done > svg {
+  color: var(--accent);
+}
+.git-steps li.running > svg {
+  color: var(--accent);
+}
+.git-steps li.error {
+  color: var(--danger);
+}
+.git-steps pre {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  font-family: inherit;
+  font-size: 12px;
+}
+.git-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.git-setup .field-row > .input {
+  flex: 1;
+}
+.git-setup .field-row > .check {
+  flex: none;
+  height: 40px;
+}

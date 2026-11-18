@@ -83,15 +83,19 @@ interface Props {
   cwd: string
   /** ターミナルタブが表示されているか */
   visible: boolean
+  /** コマンド画面から送られた文字列 (Enter は押さずに入力する) */
+  inject?: { text: string; nonce: number } | null
 }
 
-export function TerminalPanel({ cwd, visible }: Props): React.JSX.Element {
+export function TerminalPanel({ cwd, visible, inject }: Props): React.JSX.Element {
   const theme = useTheme()
   const [shells, setShells] = useState<ShellInfo[]>([])
   const [shellId, setShellId] = useState('')
   const [follow, setFollow] = useState(true)
   const [generation, setGeneration] = useState(0) // 再起動用
   const [ready, setReady] = useState(false)
+  /** シェルが最初のプロンプトを表示し終えたか (コマンド画面からの入力はこの後に送る) */
+  const [prompted, setPrompted] = useState(false)
   const [exited, setExited] = useState(false)
   const [termDir, setTermDir] = useState('')
 
@@ -136,11 +140,21 @@ export function TerminalPanel({ cwd, visible }: Props): React.JSX.Element {
 
     let disposed = false
     setReady(false)
+    setPrompted(false)
     setExited(false)
     const startDir = cwdRef.current
+    let promptTimer: ReturnType<typeof setTimeout> | undefined
+    // 最初の出力が落ち着いたら (または 3 秒たったら) プロンプト表示済みとみなす
+    const markPrompted = (delay: number): void => {
+      clearTimeout(promptTimer)
+      promptTimer = setTimeout(() => !disposed && setPrompted(true), delay)
+    }
 
     const offData = window.api.terminal.onData((id, data) => {
-      if (id === idRef.current) term.write(data)
+      if (id === idRef.current) {
+        term.write(data)
+        markPrompted(350)
+      }
     })
     const offExit = window.api.terminal.onExit((id) => {
       if (id === idRef.current) {
@@ -157,6 +171,7 @@ export function TerminalPanel({ cwd, visible }: Props): React.JSX.Element {
         idRef.current = id
         setTermDir(startDir)
         setReady(true)
+        markPrompted(3000)
       })
       .catch((e) => term.write(`\x1b[31m${errorMessage(e)}\x1b[0m\r\n`))
 
@@ -199,6 +214,7 @@ export function TerminalPanel({ cwd, visible }: Props): React.JSX.Element {
 
     return () => {
       disposed = true
+      clearTimeout(promptTimer)
       ro.disconnect()
       input.dispose()
       resize.dispose()
@@ -238,6 +254,21 @@ export function TerminalPanel({ cwd, visible }: Props): React.JSX.Element {
       termRef.current?.focus()
     })
   }, [visible])
+
+  // コマンド画面からの入力 (複数行はシェルに合わせた区切りで1行にまとめ、実行はしない)
+  const injected = useRef(0)
+  useEffect(() => {
+    if (!inject || !prompted || idRef.current === null || inject.nonce === injected.current) return
+    injected.current = inject.nonce
+    const sep = shellId === 'cmd' ? ' & ' : '; '
+    const line = inject.text
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .join(sep)
+    window.api.terminal.write(idRef.current, line)
+    termRef.current?.focus()
+  }, [inject, prompted, shellId])
 
   return (
     <div className="term-panel">

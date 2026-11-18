@@ -3,6 +3,7 @@ import type { FsEntry } from '../../shared/types'
 import { Sidebar, type PageId } from './components/Sidebar'
 import { OfficePage } from './pages/OfficePage'
 import { CodePage } from './pages/CodePage'
+import { CommandsPage } from './pages/CommandsPage'
 import { ToastProvider, useToast } from './lib/toast'
 import { errorMessage } from './lib/format'
 
@@ -55,7 +56,19 @@ function Shell(): React.JSX.Element {
     if (saved === 'light' || saved === 'dark') return saved
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-  const [page, setPage] = useState<PageId>(() => (store.get('page') === 'code' ? 'code' : 'office'))
+  const [page, setPage] = useState<PageId>(() => {
+    const saved = store.get('page')
+    return saved === 'code' || saved === 'commands' ? saved : 'office'
+  })
+  // コマンドをターミナルへ送るときは、最後に使っていた Office / Code 画面のターミナルを使う
+  const [lastBrowser, setLastBrowser] = useState<'office' | 'code'>(() =>
+    store.get('page') === 'code' ? 'code' : 'office'
+  )
+  const [inject, setInject] = useState<{
+    page: 'office' | 'code'
+    text: string
+    nonce: number
+  } | null>(null)
   const [rootDir, setRootDir] = useState<string | null>(() => store.get('rootDir'))
 
   const office = useBrowserState(rootDir)
@@ -67,7 +80,19 @@ function Shell(): React.JSX.Element {
     window.api.setTheme(theme)
   }, [theme])
 
-  useEffect(() => store.set('page', page), [page])
+  useEffect(() => {
+    store.set('page', page)
+    if (page === 'office' || page === 'code') setLastBrowser(page)
+  }, [page])
+
+  const sendToTerminal = (text: string): void => {
+    if (!rootDir) {
+      toast('error', '先に Office / Code 画面でフォルダを選択してください')
+      return
+    }
+    setInject({ page: lastBrowser, text, nonce: Date.now() })
+    setPage(lastBrowser)
+  }
 
   // 前回のフォルダが消えていたらリセット
   useEffect(() => {
@@ -102,10 +127,23 @@ function Shell(): React.JSX.Element {
       <main className="main">
         {/* 両ページとも常に表示しておき、切替は非表示にするだけ (ターミナルを止めないため) */}
         <div className={`page-slot ${page === 'office' ? '' : 'hidden'}`}>
-          <OfficePage rootDir={rootDir} onPickRoot={pickRoot} state={office} />
+          <OfficePage
+            rootDir={rootDir}
+            onPickRoot={pickRoot}
+            state={office}
+            terminalInject={inject?.page === 'office' ? inject : null}
+          />
         </div>
         <div className={`page-slot ${page === 'code' ? '' : 'hidden'}`}>
-          <CodePage rootDir={rootDir} onPickRoot={pickRoot} state={code} />
+          <CodePage
+            rootDir={rootDir}
+            onPickRoot={pickRoot}
+            state={code}
+            terminalInject={inject?.page === 'code' ? inject : null}
+          />
+        </div>
+        <div className={`page-slot ${page === 'commands' ? '' : 'hidden'}`}>
+          <CommandsPage onSendToTerminal={sendToTerminal} />
         </div>
       </main>
     </div>

@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { Api } from '../shared/api'
+import type {
+  GitBranches,
+  GitSetupOptions,
+  GitStatus,
+  GitStepLog,
+  SavedCommand
+} from '../shared/git'
 import type { PdfEngines, PdfHtmlOptions, PdfOptions, PdfResult } from '../shared/pdf'
 import type {
   CreateOptions,
@@ -40,6 +47,28 @@ const api: Api = {
   openInVSCode: (p: string, folder?: string) => call<void>('vscode:open', p, folder),
 
   createFile: (o: CreateOptions) => call<string>('file:create', o),
+  createFolder: (parent: string, name: string) => call<string>('fs:mkdir', parent, name),
+  loadCommands: () => call<SavedCommand[]>('commands:load'),
+  saveCommands: (list: SavedCommand[]) => call<SavedCommand[]>('commands:save', list),
+  git: {
+    status: (dir: string) => call<GitStatus>('git:status', dir),
+    branches: (dir: string) => call<GitBranches>('git:branches', dir),
+    switchBranch: (dir: string, name: string, create: boolean) =>
+      call<string>('git:switch', dir, name, create),
+    commit: (dir: string, message: string, files: string[] | 'all') =>
+      call<string>('git:commit', dir, message, files),
+    push: (dir: string) => call<string>('git:push', dir),
+    pull: (dir: string) => call<string>('git:pull', dir),
+    addRemote: (dir: string, url: string) => call<void>('git:addRemote', dir, url),
+    setIdentity: (dir: string, name: string, email: string) =>
+      call<void>('git:identity', dir, name, email),
+    setup: (dir: string, o: GitSetupOptions) => call<void>('git:setup', dir, o),
+    onSetupStep: (cb: (log: GitStepLog) => void) => {
+      const l = (_: unknown, log: GitStepLog): void => cb(log)
+      ipcRenderer.on('git:setupStep', l)
+      return () => ipcRenderer.removeListener('git:setupStep', l)
+    }
+  },
 
   pdfEngines: () => call<PdfEngines>('pdf:engines'),
   convertToPdf: (p: string, o: PdfOptions) => call<PdfResult>('pdf:convert', p, o),
