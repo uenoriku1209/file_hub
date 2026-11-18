@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { FsEntry } from '../../shared/types'
 import { Sidebar, type PageId } from './components/Sidebar'
+import {
+  parseLayout,
+  restorePane,
+  type BrowserPage,
+  type PaneId,
+  type PaneLayout
+} from './lib/layout'
 import { OfficePage } from './pages/OfficePage'
 import { CodePage } from './pages/CodePage'
 import { CommandsPage } from './pages/CommandsPage'
@@ -71,6 +78,20 @@ function Shell(): React.JSX.Element {
   } | null>(null)
   const [rootDir, setRootDir] = useState<string | null>(() => store.get('rootDir'))
 
+  // 3 つの欄の表示・幅 (Office / Code ごとに保存)
+  const [layouts, setLayouts] = useState<Record<BrowserPage, PaneLayout>>(() => ({
+    office: parseLayout(store.get('layout.office')),
+    code: parseLayout(store.get('layout.code'))
+  }))
+  const setLayout = (page: BrowserPage, l: PaneLayout): void => {
+    setLayouts((cur) => ({ ...cur, [page]: l }))
+    store.set(`layout.${page}`, JSON.stringify(l))
+  }
+  const restore = (page: BrowserPage, pane: PaneId): void => {
+    setLayout(page, restorePane(layouts[page], pane))
+    setPage(page)
+  }
+
   const office = useBrowserState(rootDir)
   const code = useBrowserState(rootDir)
 
@@ -123,6 +144,8 @@ function Shell(): React.JSX.Element {
         onPage={setPage}
         theme={theme}
         onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        docked={{ office: layouts.office.hidden, code: layouts.code.hidden }}
+        onRestore={restore}
       />
       <main className="main">
         {/* 両ページとも常に表示しておき、切替は非表示にするだけ (ターミナルを止めないため) */}
@@ -132,6 +155,8 @@ function Shell(): React.JSX.Element {
             onPickRoot={pickRoot}
             state={office}
             terminalInject={inject?.page === 'office' ? inject : null}
+            layout={layouts.office}
+            onLayout={(l) => setLayout('office', l)}
           />
         </div>
         <div className={`page-slot ${page === 'code' ? '' : 'hidden'}`}>
@@ -140,6 +165,8 @@ function Shell(): React.JSX.Element {
             onPickRoot={pickRoot}
             state={code}
             terminalInject={inject?.page === 'code' ? inject : null}
+            layout={layouts.code}
+            onLayout={(l) => setLayout('code', l)}
           />
         </div>
         <div className={`page-slot ${page === 'commands' ? '' : 'hidden'}`}>

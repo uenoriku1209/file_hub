@@ -34,7 +34,9 @@ export interface Api {
     status(dir: string): Promise<GitStatus>
     branches(dir: string): Promise<GitBranches>
     switchBranch(dir: string, name: string, create: boolean): Promise<string>
-    commit(dir: string, message: string, files: string[] | 'all'): Promise<string>
+    /** 選んだファイルだけを add された状態にする */
+    stage(dir: string, files: string[]): Promise<string>
+    commit(dir: string, message: string, files: string[] | 'all' | 'staged'): Promise<string>
     push(dir: string): Promise<string>
     pull(dir: string): Promise<string>
     /** 登録 (同じ名前があれば URL を変更) */

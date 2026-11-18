@@ -9,6 +9,7 @@ import { CodePreview } from '../previews/CodePreview'
 import { useToast } from '../lib/toast'
 import { errorMessage } from '../lib/format'
 import type { BrowserState } from '../App'
+import type { PaneLayout } from '../lib/layout'
 
 interface Props {
   rootDir: string | null
@@ -16,9 +17,18 @@ interface Props {
   state: BrowserState
   /** コマンド画面から送られた、ターミナルに入力する文字列 */
   terminalInject: { text: string; nonce: number } | null
+  layout: PaneLayout
+  onLayout: (l: PaneLayout) => void
 }
 
-export function CodePage({ rootDir, onPickRoot, state, terminalInject }: Props): React.JSX.Element {
+export function CodePage({
+  rootDir,
+  onPickRoot,
+  state,
+  terminalInject,
+  layout,
+  onLayout
+}: Props): React.JSX.Element {
   const toast = useToast()
   const [visibleFiles, setVisibleFiles] = useState<FsEntry[]>([])
   const [pdfTargets, setPdfTargets] = useState<FsEntry[] | null>(null)
@@ -50,6 +60,8 @@ export function CodePage({ rootDir, onPickRoot, state, terminalInject }: Props):
         emptyIcon={<Code2 size={40} strokeWidth={1.4} />}
         onVisibleFilesChange={setVisibleFiles}
         terminalInject={terminalInject}
+        layout={layout}
+        onLayout={onLayout}
         headerActions={
           <>
             <button

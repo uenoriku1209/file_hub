@@ -7,6 +7,7 @@ import {
   gitBranches,
   gitSwitch,
   gitCommit,
+  gitStage,
   gitPush,
   gitPull,
   gitAddRemote,
@@ -120,7 +121,8 @@ export function registerIpc(): void {
   handle('git:switch', (_e, dir: string, name: string, create: boolean) =>
     gitSwitch(dir, name, create)
   )
-  handle('git:commit', (_e, dir: string, message: string, files: string[] | 'all') =>
+  handle('git:stage', (_e, dir: string, files: string[]) => gitStage(dir, files))
+  handle('git:commit', (_e, dir: string, message: string, files: string[] | 'all' | 'staged') =>
     gitCommit(dir, message, files)
   )
   handle('git:push', (_e, dir: string) => gitPush(dir))

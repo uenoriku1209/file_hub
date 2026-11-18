@@ -55,7 +55,8 @@ const api: Api = {
     branches: (dir: string) => call<GitBranches>('git:branches', dir),
     switchBranch: (dir: string, name: string, create: boolean) =>
       call<string>('git:switch', dir, name, create),
-    commit: (dir: string, message: string, files: string[] | 'all') =>
+    stage: (dir: string, files: string[]) => call<string>('git:stage', dir, files),
+    commit: (dir: string, message: string, files: string[] | 'all' | 'staged') =>
       call<string>('git:commit', dir, message, files),
     push: (dir: string) => call<string>('git:push', dir),
     pull: (dir: string) => call<string>('git:pull', dir),

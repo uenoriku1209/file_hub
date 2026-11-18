@@ -14,15 +14,14 @@ import {
   FolderGit2,
   UserRound,
   Link2,
-  Maximize2,
-  Minimize2,
+  PanelLeftClose,
   X,
   SquareTerminal,
   KeyRound,
   Square
 } from 'lucide-react'
 import type { GitBranches, GitSetupOptions, GitStatus, GitStepLog } from '../../../shared/git'
-import { explainGitError } from '../../../shared/git'
+import { explainGitError, isStagedFile } from '../../../shared/git'
 import { isShellNoise, stripAnsi, toLines } from '../lib/ansi'
 import type { TerminalHandle } from './TerminalPanel'
 import { basename, errorMessage } from '../lib/format'
@@ -39,8 +38,9 @@ interface Props {
   onChanged: () => void
   /** プッシュ・プルを実行するターミナル */
   terminal: { ensure: () => Promise<TerminalHandle>; show: () => void }
-  maximized: boolean
-  onToggleMax: () => void
+  /** プレビュー欄をしまえるか (最後の 1 つならしまえない) */
+  canCollapse: boolean
+  onCollapse: () => void
 }
 
 const LABEL_CLASS: Record<string, string> = {
@@ -210,10 +210,15 @@ export function GitPanel(p: Props): React.JSX.Element {
       </button>
       <button
         className="btn-icon small"
-        onClick={p.onToggleMax}
-        title={p.maximized ? '元の大きさに戻す（Esc）' : '大画面で表示'}
+        onClick={p.onCollapse}
+        disabled={!p.canCollapse}
+        title={
+          p.canCollapse
+            ? 'この欄をしまう（左の Office / Code タブの下から戻せます）'
+            : '最後の欄はしまえません'
+        }
       >
-        {p.maximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+        <PanelLeftClose size={14} />
       </button>
     </div>
   )
@@ -643,22 +648,12 @@ function RepoView({
   onPull: () => void
 }): React.JSX.Element {
   const root = status.root!
-  const files = status.files ?? []
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [message, setMessage] = useState('')
   const [target, setTarget] = useState('')
   const [newBranch, setNewBranch] = useState('')
   const [remoteUrl, setRemoteUrl] = useState('')
   const [name, setName] = useState(status.user?.name ?? '')
   const [email, setEmail] = useState(status.user?.email ?? '')
 
-  // 変更ファイルが変わったら、全部選択し直す
-  const fileKey = files.map((f) => f.path).join('\n')
-  useEffect(() => {
-    setSelected(new Set(fileKey ? fileKey.split('\n') : []))
-  }, [fileKey])
-
-  const allSelected = files.length > 0 && selected.size === files.length
   const otherBranches = useMemo(
     () => [
       ...branches.local.filter((b) => b !== status.branch),
@@ -684,16 +679,6 @@ function RepoView({
               .join('・')
           : `${status.upstream} と同じ`
 
-  const commit = async (): Promise<void> => {
-    const list = allSelected ? 'all' : [...selected]
-    const ok = await act(
-      'コミット',
-      () => window.api.git.commit(root, message, list),
-      `コミットしました（${allSelected ? files.length : selected.size} 件）`
-    )
-    if (ok) setMessage('')
-  }
-
   return (
     <div className="git-repo">
       {/* リポジトリの概要 */}
@@ -705,6 +690,15 @@ function RepoView({
           <span className={`git-sync ${status.ahead || status.behind ? 'warn' : ''}`}>
             {syncText}
           </span>
+          <div className="spacer" />
+          <button
+            className={`btn small ${status.behind ? 'btn-primary' : ''}`}
+            disabled={!!busy || !hasRemote || !status.upstream}
+            onClick={onPull}
+            title="リモート（GitHub など）にある新しい変更を取り込みます"
+          >
+            <Download size={14} /> プル{status.behind ? `（${status.behind}）` : ''}
+          </button>
         </div>
         <div className="git-meta" title={root}>
           <FolderGit2 size={13} /> {root}
@@ -776,97 +770,8 @@ function RepoView({
         </div>
       )}
 
-      {/* 変更とコミット */}
-      <div className="git-section">
-        <div className="git-section-head">
-          <h3>
-            <GitCommitHorizontal size={15} /> 変更（{files.length} 件）
-          </h3>
-          {files.length > 0 && (
-            <label className="check compact">
-              <input
-                type="checkbox"
-                checked={allSelected}
-                onChange={(e) =>
-                  setSelected(e.target.checked ? new Set(files.map((f) => f.path)) : new Set())
-                }
-              />{' '}
-              すべて選択
-            </label>
-          )}
-        </div>
-        {files.length === 0 ? (
-          <p className="muted small-text">変更はありません。</p>
-        ) : (
-          <ul className="git-files">
-            {files.map((f) => (
-              <li key={f.path}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={selected.has(f.path)}
-                    onChange={(e) =>
-                      setSelected((s) => {
-                        const n = new Set(s)
-                        if (e.target.checked) n.add(f.path)
-                        else n.delete(f.path)
-                        return n
-                      })
-                    }
-                  />
-                  <span className={`git-badge ${LABEL_CLASS[f.label]}`}>{f.label}</span>
-                  <span className="git-path" title={f.from ? `${f.from} → ${f.path}` : f.path}>
-                    {f.from ? `${f.from} → ` : ''}
-                    {f.path}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-        <textarea
-          className="input"
-          rows={2}
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="コミットメッセージ（何を変えたか。例: 図の作成機能を追加）"
-        />
-        <div className="key-row end">
-          <button
-            className="btn btn-primary small"
-            disabled={!!busy || selected.size === 0 || !message.trim()}
-            onClick={commit}
-          >
-            <GitCommitHorizontal size={14} /> コミット（{selected.size} 件）
-          </button>
-        </div>
-      </div>
-
-      {/* プッシュ・プル */}
-      <div className="git-section">
-        <h3>
-          <Upload size={15} /> 同期
-        </h3>
-        <div className="key-row">
-          <button
-            className="btn btn-primary small"
-            disabled={!!busy || !hasRemote || !status.hasCommits}
-            onClick={onPush}
-          >
-            <Upload size={14} /> プッシュ{status.ahead ? `（${status.ahead}）` : ''}
-          </button>
-          <button
-            className="btn small"
-            disabled={!!busy || !hasRemote || !status.upstream}
-            onClick={onPull}
-          >
-            <Download size={14} /> プル{status.behind ? `（${status.behind}）` : ''}
-          </button>
-          <span className="muted small-text">
-            ターミナルで実行します。合言葉（パスフレーズ）を聞かれたら、この画面に入力欄が出ます
-          </span>
-        </div>
-      </div>
+      {/* add → commit → push の流れ */}
+      <GitFlow status={status} busy={busy} act={act} onPush={onPush} />
 
       {/* ブランチ */}
       <div className="git-section">
@@ -1065,6 +970,253 @@ function RemoteRow({
           解除
         </button>
       </div>
+    </div>
+  )
+}
+
+/* ---------------- add → commit → push の段階表示 ---------------- */
+
+type Step = 1 | 2 | 3 | 4
+
+function FlowStep({
+  n,
+  title,
+  hint,
+  state,
+  children
+}: {
+  n: number
+  title: string
+  hint: string
+  /** active: いまの操作 / done: 完了 / locked: まだ */
+  state: 'active' | 'done' | 'locked'
+  children: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <div className={`flow-step ${state}`} aria-disabled={state !== 'active'}>
+      <div className="flow-step-head">
+        <span className="flow-num">{state === 'done' ? <CheckCircle2 size={16} /> : n}</span>
+        <div>
+          <h3>{title}</h3>
+          <p className="muted small-text">{hint}</p>
+        </div>
+        {state === 'active' && <span className="flow-now">いまここ</span>}
+      </div>
+      <div className="flow-step-body" inert={state !== 'active'}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function FlowLink({ done }: { done: boolean }): React.JSX.Element {
+  return (
+    <div className={`flow-link ${done ? 'done' : ''}`}>
+      <span />
+    </div>
+  )
+}
+
+function GitFlow({
+  status,
+  busy,
+  act,
+  onPush
+}: {
+  status: GitStatus
+  busy: string | null
+  act: (label: string, fn: () => Promise<unknown>, done?: string) => Promise<boolean>
+  onPush: () => void
+}): React.JSX.Element {
+  const root = status.root!
+  const files = status.files ?? []
+  const staged = files.filter(isStagedFile)
+  const hasRemote = (status.remotes?.length ?? 0) > 0
+  const needsPush =
+    hasRemote &&
+    !!status.hasCommits &&
+    (!!status.ahead || !status.upstream || !!status.upstreamGone)
+
+  // いまの段階 (状態から自動で決める。「選び直す」で 1 に戻れる)
+  const auto: Step = staged.length ? 2 : needsPush ? 3 : files.length ? 1 : 4
+  const [manual, setManual] = useState<Step | null>(null)
+  const stateKey = `${files.map((f) => f.x + f.y + f.path).join('|')}#${status.ahead}#${status.upstream}`
+  useEffect(() => setManual(null), [stateKey])
+  const step: Step = manual ?? auto
+
+  // 1. 選択 (add 済みのものがあればそれを、なければ全部を選んだ状態から始める)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const fileKey = files.map((f) => f.path + (isStagedFile(f) ? '+' : '')).join('\n')
+  useEffect(() => {
+    const st = files.filter(isStagedFile)
+    setSelected(new Set((st.length ? st : files).map((f) => f.path)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileKey])
+  const allSelected = files.length > 0 && selected.size === files.length
+
+  const [message, setMessage] = useState('')
+
+  const stateOf = (n: 1 | 2 | 3): 'active' | 'done' | 'locked' =>
+    step === n ? 'active' : step > n ? 'done' : 'locked'
+
+  return (
+    <div className={`git-flow ${step === 4 ? 'all-done' : ''}`}>
+      <FlowStep
+        n={1}
+        title="送るファイルを選ぶ（add）"
+        hint="変更したファイルのうち、今回記録するものにチェックを入れて「追加」を押します"
+        state={stateOf(1)}
+      >
+        {files.length === 0 ? (
+          <p className="muted small-text">
+            変更はありません。ファイルを編集・追加すると、ここに表示されます。
+          </p>
+        ) : (
+          <>
+            <div className="git-section-head">
+              <span className="muted small-text">変更されたファイル（{files.length} 件）</span>
+              <label className="check compact">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) =>
+                    setSelected(e.target.checked ? new Set(files.map((f) => f.path)) : new Set())
+                  }
+                />{' '}
+                すべて選択
+              </label>
+            </div>
+            <ul className="git-files">
+              {files.map((f) => (
+                <li key={f.path}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(f.path)}
+                      onChange={(e) =>
+                        setSelected((s) => {
+                          const n = new Set(s)
+                          if (e.target.checked) n.add(f.path)
+                          else n.delete(f.path)
+                          return n
+                        })
+                      }
+                    />
+                    <span className={`git-badge ${LABEL_CLASS[f.label]}`}>{f.label}</span>
+                    <span className="git-path" title={f.from ? `${f.from} → ${f.path}` : f.path}>
+                      {f.from ? `${f.from} → ` : ''}
+                      {f.path}
+                    </span>
+                    {isStagedFile(f) && <span className="pill flow-staged">追加済み</span>}
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="key-row end">
+              <button
+                className="btn btn-primary small"
+                disabled={!!busy || selected.size === 0}
+                onClick={() =>
+                  act(
+                    '追加',
+                    () => window.api.git.stage(root, [...selected]),
+                    `${selected.size} 件を追加しました。次はコミットです`
+                  )
+                }
+              >
+                <CheckCircle2 size={14} /> 選んだ {selected.size} 件を追加して次へ
+              </button>
+            </div>
+          </>
+        )}
+      </FlowStep>
+
+      <FlowLink done={step > 1} />
+
+      <FlowStep
+        n={2}
+        title="記録する（commit）"
+        hint="追加したファイルを、メッセージ付きで手元に記録します（まだリモートには送られません）"
+        state={stateOf(2)}
+      >
+        {staged.length > 0 && (
+          <div className="flow-chips">
+            {staged.slice(0, 12).map((f) => (
+              <span key={f.path} className="pill" title={f.path}>
+                {basename(f.path)}
+              </span>
+            ))}
+            {staged.length > 12 && (
+              <span className="muted small-text">ほか {staged.length - 12} 件</span>
+            )}
+          </div>
+        )}
+        <textarea
+          className="input"
+          rows={2}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="コミットメッセージ（何を変えたか。例: 図の作成機能を追加）"
+        />
+        <div className="key-row end">
+          <button className="btn small" disabled={!!busy} onClick={() => setManual(1)}>
+            <ArrowLeft size={14} /> ファイルを選び直す
+          </button>
+          <button
+            className="btn btn-primary small"
+            disabled={!!busy || !message.trim()}
+            onClick={async () => {
+              const ok = await act(
+                'コミット',
+                () => window.api.git.commit(root, message, 'staged'),
+                hasRemote ? 'コミットしました。次はプッシュです' : 'コミットしました'
+              )
+              if (ok) setMessage('')
+            }}
+          >
+            <GitCommitHorizontal size={14} /> コミット（{staged.length} 件）
+          </button>
+        </div>
+      </FlowStep>
+
+      <FlowLink done={step > 2} />
+
+      <FlowStep
+        n={3}
+        title="送る（push）"
+        hint="記録した内容をリモート（GitHub など）に送ります。ターミナルで実行し、合言葉を聞かれたらこの画面に入力欄が出ます"
+        state={stateOf(3)}
+      >
+        {!hasRemote ? (
+          <p className="muted small-text">
+            リモートが未設定です。上の概要で URL を登録すると送れるようになります。
+          </p>
+        ) : (
+          <div className="key-row">
+            <button
+              className="btn btn-primary small"
+              disabled={!!busy || !status.hasCommits}
+              onClick={onPush}
+            >
+              <Upload size={14} /> プッシュ{status.ahead ? `（未送信 ${status.ahead} 件）` : ''}
+            </button>
+            {files.length > 0 && (
+              <button className="btn small" disabled={!!busy} onClick={() => setManual(1)}>
+                先に別の変更も追加する
+              </button>
+            )}
+          </div>
+        )}
+      </FlowStep>
+
+      {step === 4 && (
+        <div className="flow-finish">
+          <CheckCircle2 size={18} />
+          {hasRemote
+            ? 'すべて完了しました。手元とリモートは同じ状態です'
+            : 'コミットまで完了しました（リモートを登録すると送れます）'}
+        </div>
+      )}
     </div>
   )
 }

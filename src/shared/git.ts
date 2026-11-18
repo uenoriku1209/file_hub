@@ -126,3 +126,8 @@ export function explainGitError(text: string): string {
   for (const [re, msg] of rules) if (re.test(t)) return `${msg}\n\n詳細: ${t.slice(0, 400)}`
   return t.slice(0, 600) || 'Git の操作に失敗しました'
 }
+
+/** add 済み (ステージ済み) の変更があるファイルか */
+export function isStagedFile(f: Pick<GitFile, 'x'>): boolean {
+  return f.x !== ' ' && f.x !== '?' && f.x !== '!'
+}

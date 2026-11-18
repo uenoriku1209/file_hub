@@ -1,4 +1,7 @@
-import { FileText, Code2, Command, Sun, Moon } from 'lucide-react'
+import { FileText, Code2, Command, Sun, Moon, FolderTree, Files, Eye } from 'lucide-react'
+import { PANE_LABEL, type BrowserPage, type PaneId } from '../lib/layout'
+
+const PANE_ICON: Record<PaneId, typeof FileText> = { tree: FolderTree, list: Files, panel: Eye }
 
 export type PageId = 'office' | 'code' | 'commands'
 
@@ -13,9 +16,19 @@ interface Props {
   onPage: (p: PageId) => void
   theme: 'light' | 'dark'
   onToggleTheme: () => void
+  /** しまった欄 (Office / Code ごと) */
+  docked: Record<BrowserPage, PaneId[]>
+  onRestore: (page: BrowserPage, pane: PaneId) => void
 }
 
-export function Sidebar({ page, onPage, theme, onToggleTheme }: Props): React.JSX.Element {
+export function Sidebar({
+  page,
+  onPage,
+  theme,
+  onToggleTheme,
+  docked,
+  onRestore
+}: Props): React.JSX.Element {
   return (
     <aside className="sidebar">
       <div className="logo" title="File Hub">
@@ -24,17 +37,36 @@ export function Sidebar({ page, onPage, theme, onToggleTheme }: Props): React.JS
 
       <nav className="nav">
         {NAV.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            className={`nav-item ${page === id ? 'active' : ''}`}
-            onClick={() => onPage(id)}
-            title={label}
-          >
-            <span className="nav-icon">
-              <Icon size={20} strokeWidth={1.8} />
-            </span>
-            <span className="nav-label">{label}</span>
-          </button>
+          <div key={id} className="nav-group">
+            <button
+              className={`nav-item ${page === id ? 'active' : ''}`}
+              onClick={() => onPage(id)}
+              title={label}
+            >
+              <span className="nav-icon">
+                <Icon size={20} strokeWidth={1.8} />
+              </span>
+              <span className="nav-label">{label}</span>
+            </button>
+            {id !== 'commands' && docked[id].length > 0 && (
+              <div className="nav-dock">
+                {docked[id].map((pane) => {
+                  const PaneIcon = PANE_ICON[pane]
+                  return (
+                    <button
+                      key={pane}
+                      className="dock-item"
+                      onClick={() => onRestore(id, pane)}
+                      title={`${label} の「${PANE_LABEL[pane]}」欄を戻す`}
+                    >
+                      <PaneIcon size={15} />
+                      <span>{PANE_LABEL[pane]}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
         ))}
       </nav>
 

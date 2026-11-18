@@ -19,6 +19,7 @@ import {
 import { useToast } from '../lib/toast'
 import { basename, errorMessage, parentDir } from '../lib/format'
 import type { BrowserState } from '../App'
+import type { PaneLayout } from '../lib/layout'
 
 interface Props {
   rootDir: string | null
@@ -26,6 +27,8 @@ interface Props {
   state: BrowserState
   /** コマンド画面から送られた、ターミナルに入力する文字列 */
   terminalInject: { text: string; nonce: number } | null
+  layout: PaneLayout
+  onLayout: (l: PaneLayout) => void
 }
 
 function body(e: FsEntry): React.JSX.Element {
@@ -63,7 +66,9 @@ export function OfficePage({
   rootDir,
   onPickRoot,
   state,
-  terminalInject
+  terminalInject,
+  layout,
+  onLayout
 }: Props): React.JSX.Element {
   const toast = useToast()
   const [showNew, setShowNew] = useState(false)
@@ -97,6 +102,8 @@ export function OfficePage({
         emptyIcon={<FileText size={40} strokeWidth={1.4} />}
         onVisibleFilesChange={setVisibleFiles}
         terminalInject={terminalInject}
+        layout={layout}
+        onLayout={onLayout}
         headerActions={
           <>
             <button

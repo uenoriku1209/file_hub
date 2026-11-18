@@ -17,8 +17,7 @@ import {
   Eye,
   SquareTerminal,
   X,
-  Maximize2,
-  Minimize2,
+  PanelLeftClose,
   FolderPlus,
   GitBranch
 } from 'lucide-react'
@@ -27,6 +26,7 @@ import { type Category, categoryOf } from '../lib/fileTypes'
 import { formatDate, formatSize, basename, parentDir, sepOf, errorMessage } from '../lib/format'
 import { FolderTree } from './FolderTree'
 import { TerminalPanel, type TerminalHandle } from './TerminalPanel'
+import { hidePane, visiblePanes, type PaneId, type PaneLayout } from '../lib/layout'
 import { GitPanel } from './GitPanel'
 import { useToast } from '../lib/toast'
 
@@ -52,26 +52,39 @@ interface Props {
   onVisibleFilesChange?: (files: FsEntry[]) => void
   /** コマンド画面から送られた、ターミナルに入力する文字列 */
   terminalInject?: { text: string; nonce: number } | null
+  /** 3 つの欄の表示・幅 */
+  layout: PaneLayout
+  onLayout: (l: PaneLayout) => void
 }
 
 type Panel = 'preview' | 'terminal' | 'git'
-type MaxTarget = 'tree' | 'list' | 'panel' | null
+/** 欄どうしの間の「つまみ」の幅 (px) */
+const SPLIT = 16
+/** これより細くすると、離したときに欄をしまう (px) */
+const CLOSE_AT = 120
+/** ドラッグ中の最小幅 (px) */
+const FLOOR = 44
 
-/** 大画面化 / 元に戻す ボタン */
-function MaxButton({
-  active,
+/** 欄をしまうボタン */
+function CollapseButton({
+  disabled,
   onClick
 }: {
-  active: boolean
+  disabled: boolean
   onClick: () => void
 }): React.JSX.Element {
   return (
     <button
       className="btn-icon small max-btn"
       onClick={onClick}
-      title={active ? '元の大きさに戻す（Esc）' : '大画面で表示'}
+      disabled={disabled}
+      title={
+        disabled
+          ? '最後の欄はしまえません'
+          : 'この欄をしまう（左の Office / Code タブの下から戻せます）'
+      }
     >
-      {active ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+      <PanelLeftClose size={14} />
     </button>
   )
 }
@@ -110,7 +123,12 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const [backPanel, setBackPanel] = useState<'preview' | 'terminal'>('preview')
   const [termMounted, setTermMounted] = useState(false)
   const [gitMounted, setGitMounted] = useState(false)
-  const [maximized, setMaximized] = useState<MaxTarget>(null)
+  const browserRef = useRef<HTMLDivElement>(null)
+  /** ドラッグ中の幅 (離すまでは保存しない) と、しまう予定の欄 */
+  const [live, setLive] = useState<{
+    sizes: Record<PaneId, number>
+    closing: PaneId | null
+  } | null>(null)
   const [newFolder, setNewFolder] = useState<string | null>(null)
   const termHandle = useRef<TerminalHandle | null>(null)
 
@@ -124,17 +142,80 @@ export function FileBrowser(p: Props): React.JSX.Element {
     throw new Error('ターミナルを起動できませんでした。ターミナルタブを開いて確認してください')
   }
 
-  const toggleMax = (t: Exclude<MaxTarget, null>): void => setMaximized((m) => (m === t ? null : t))
+  const shownPanes = visiblePanes(p.layout)
+  const sizes = live?.sizes ?? p.layout.sizes
+  const collapse = (id: PaneId): void => p.onLayout(hidePane(p.layout, id))
+  const canCollapse = shownPanes.length > 1
 
-  // Esc で大画面表示をやめる
-  useEffect(() => {
-    if (!maximized) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !(e.target as HTMLElement)?.closest?.('.xterm')) setMaximized(null)
+  /** 欄の間のつまみをドラッグして幅を変える (細くしきって離すと、その欄をしまう) */
+  const startResize = (
+    e: React.PointerEvent<HTMLDivElement>,
+    left: PaneId,
+    right: PaneId
+  ): void => {
+    const el = browserRef.current
+    if (!el || e.button !== 0) return
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    const avail = el.clientWidth - (shownPanes.length - 1) * SPLIT
+    const total = shownPanes.reduce((n, id) => n + p.layout.sizes[id], 0) || 1
+    const px = { tree: 0, list: 0, panel: 0 }
+    for (const id of shownPanes) px[id] = (p.layout.sizes[id] / total) * avail
+    const pair = px[left] + px[right]
+    const startX = e.clientX
+    const toWeights = (v: Record<PaneId, number>): Record<PaneId, number> => ({
+      tree: v.tree / avail,
+      list: v.list / avail,
+      panel: v.panel / avail
+    })
+    let cur = px
+    let closing: PaneId | null = null
+    document.body.classList.add('resizing')
+    handle.classList.add('dragging')
+
+    const move = (ev: PointerEvent): void => {
+      const l = Math.min(Math.max(px[left] + ev.clientX - startX, FLOOR), pair - FLOOR)
+      const r = pair - l
+      closing = l < CLOSE_AT ? left : r < CLOSE_AT ? right : null
+      cur = { ...px, [left]: l, [right]: r }
+      setLive({ sizes: toWeights(cur), closing })
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [maximized])
+    const up = (): void => {
+      handle.removeEventListener('pointermove', move)
+      handle.removeEventListener('pointerup', up)
+      handle.removeEventListener('pointercancel', up)
+      document.body.classList.remove('resizing')
+      handle.classList.remove('dragging')
+      const next = { hidden: p.layout.hidden, sizes: toWeights(cur) }
+      p.onLayout(closing ? hidePane(next, closing) : next)
+      setLive(null)
+    }
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+  }
+
+  /** id の右側に、次の表示中の欄との間のつまみを置く */
+  const splitterAfter = (id: PaneId): React.ReactNode => {
+    const i = shownPanes.indexOf(id)
+    if (i < 0 || i === shownPanes.length - 1) return null
+    const next = shownPanes[i + 1]
+    return (
+      <div
+        className="splitter"
+        onPointerDown={(e) => startResize(e, id, next)}
+        title="ドラッグで幅を変更（端まで寄せて離すと欄をしまいます）"
+      >
+        <span />
+      </div>
+    )
+  }
+
+  const paneProps = (id: PaneId): { className: string; style: React.CSSProperties } => ({
+    className: `pane ${p.layout.hidden.includes(id) ? 'pane-hidden' : ''} ${live?.closing === id ? 'pane-closing' : ''}`,
+    style: { flex: `${sizes[id]} 1 0px` }
+  })
 
   // コマンド画面から送られたらターミナルを開く
   const { terminalInject } = p
@@ -349,214 +430,222 @@ export function FileBrowser(p: Props): React.JSX.Element {
         </div>
       </div>
 
-      <div className={`browser ${maximized ? `max max-${maximized}` : ''}`}>
-        <section className="card tree-card">
-          <div className="card-title row">
-            <span>フォルダ</span>
-            <MaxButton active={maximized === 'tree'} onClick={() => toggleMax('tree')} />
+      <div className={`browser panes ${live ? 'is-resizing' : ''}`} ref={browserRef}>
+        <section {...paneProps('tree')} data-pane="tree">
+          <div className="card tree-card">
+            <div className="card-title row">
+              <span>フォルダ</span>
+              <CollapseButton disabled={!canCollapse} onClick={() => collapse('tree')} />
+            </div>
+            <FolderTree
+              root={p.rootDir}
+              current={p.currentDir}
+              onSelect={p.onCurrentDir}
+              refreshKey={p.refreshKey}
+            />
           </div>
-          <FolderTree
-            root={p.rootDir}
-            current={p.currentDir}
-            onSelect={p.onCurrentDir}
-            refreshKey={p.refreshKey}
-          />
         </section>
+        {splitterAfter('tree')}
 
-        <section className="card list-card">
-          <div className="list-head">
-            <div className="crumbs">
-              <button
-                className="btn-icon small"
-                disabled={atRoot}
-                onClick={() => p.onCurrentDir(parentDir(p.currentDir))}
-                title="上のフォルダへ"
-              >
-                <ArrowUp size={15} />
-              </button>
-              {crumbs.map((c, i) => (
-                <span key={c.path} className="crumb-wrap">
-                  {i > 0 && <ChevronRight size={13} className="crumb-sep" />}
-                  <button className="crumb" onClick={() => p.onCurrentDir(c.path)}>
-                    {c.name}
-                  </button>
-                </span>
-              ))}
+        <section {...paneProps('list')} data-pane="list">
+          <div className="card list-card">
+            <div className="list-head">
+              <div className="crumbs">
+                <button
+                  className="btn-icon small"
+                  disabled={atRoot}
+                  onClick={() => p.onCurrentDir(parentDir(p.currentDir))}
+                  title="上のフォルダへ"
+                >
+                  <ArrowUp size={15} />
+                </button>
+                {crumbs.map((c, i) => (
+                  <span key={c.path} className="crumb-wrap">
+                    {i > 0 && <ChevronRight size={13} className="crumb-sep" />}
+                    <button className="crumb" onClick={() => p.onCurrentDir(c.path)}>
+                      {c.name}
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="list-options">
+                <label
+                  className={`chip-toggle ${recursive ? 'on' : ''}`}
+                  title="サブフォルダ内のファイルもまとめて表示"
+                >
+                  <input
+                    type="checkbox"
+                    checked={recursive}
+                    onChange={(e) => setRecursive(e.target.checked)}
+                  />
+                  <Layers size={14} /> サブフォルダも含む
+                </label>
+                <select
+                  className="select"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value as SortKey)}
+                >
+                  <option value="name">名前順</option>
+                  <option value="mtime">更新日順</option>
+                  <option value="size">サイズ順</option>
+                </select>
+                <button
+                  className="btn-icon small"
+                  onClick={() => setNewFolder('')}
+                  title="このフォルダの中に新しいフォルダを作成"
+                >
+                  <FolderPlus size={15} />
+                </button>
+                <CollapseButton disabled={!canCollapse} onClick={() => collapse('list')} />
+              </div>
             </div>
-            <div className="list-options">
-              <label
-                className={`chip-toggle ${recursive ? 'on' : ''}`}
-                title="サブフォルダ内のファイルもまとめて表示"
-              >
+
+            {newFolder !== null && (
+              <div className="inline-form">
+                <FolderPlus size={16} />
                 <input
-                  type="checkbox"
-                  checked={recursive}
-                  onChange={(e) => setRecursive(e.target.checked)}
+                  className="input"
+                  autoFocus
+                  value={newFolder}
+                  placeholder={`「${basename(p.currentDir)}」の中に作るフォルダ名`}
+                  onChange={(e) => setNewFolder(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) createFolder()
+                    if (e.key === 'Escape') {
+                      e.stopPropagation()
+                      setNewFolder(null)
+                    }
+                  }}
                 />
-                <Layers size={14} /> サブフォルダも含む
-              </label>
-              <select
-                className="select"
-                value={sort}
-                onChange={(e) => setSort(e.target.value as SortKey)}
-              >
-                <option value="name">名前順</option>
-                <option value="mtime">更新日順</option>
-                <option value="size">サイズ順</option>
-              </select>
-              <button
-                className="btn-icon small"
-                onClick={() => setNewFolder('')}
-                title="このフォルダの中に新しいフォルダを作成"
-              >
-                <FolderPlus size={15} />
-              </button>
-              <MaxButton active={maximized === 'list'} onClick={() => toggleMax('list')} />
-            </div>
-          </div>
+                <button className="btn small btn-primary" onClick={createFolder}>
+                  作成
+                </button>
+                <button className="btn small" onClick={() => setNewFolder(null)}>
+                  キャンセル
+                </button>
+              </div>
+            )}
 
-          {newFolder !== null && (
-            <div className="inline-form">
-              <FolderPlus size={16} />
-              <input
-                className="input"
-                autoFocus
-                value={newFolder}
-                placeholder={`「${basename(p.currentDir)}」の中に作るフォルダ名`}
-                onChange={(e) => setNewFolder(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.nativeEvent.isComposing) createFolder()
-                  if (e.key === 'Escape') {
-                    e.stopPropagation()
-                    setNewFolder(null)
-                  }
-                }}
-              />
-              <button className="btn small btn-primary" onClick={createFolder}>
-                作成
-              </button>
-              <button className="btn small" onClick={() => setNewFolder(null)}>
-                キャンセル
-              </button>
-            </div>
-          )}
-
-          <div className="file-list">
-            {visibleFolders.map((f) => (
-              <button
-                key={f.path}
-                className="file-row folder"
-                onClick={() => p.onCurrentDir(f.path)}
-              >
-                <span className="file-icon folder-icon">
-                  <Folder size={18} />
-                </span>
-                <span className="file-main">
-                  <span className="file-name">{f.name}</span>
-                </span>
-                <span className="file-meta">{formatDate(f.mtime)}</span>
-              </button>
-            ))}
-            {visible.map((f) => {
-              const c = categoryOf(f.ext, p.categories)
-              return (
+            <div className="file-list">
+              {visibleFolders.map((f) => (
                 <button
                   key={f.path}
-                  className={`file-row ${p.selected?.path === f.path ? 'selected' : ''}`}
-                  onClick={() => {
-                    p.onSelect(f)
-                    setPanel('preview')
-                  }}
+                  className="file-row folder"
+                  onClick={() => p.onCurrentDir(f.path)}
                 >
-                  <span className="file-icon" style={{ color: c?.color }}>
-                    {fileIcon(c)}
+                  <span className="file-icon folder-icon">
+                    <Folder size={18} />
                   </span>
                   <span className="file-main">
                     <span className="file-name">{f.name}</span>
-                    {f.rel ? <span className="file-rel">{f.rel}</span> : null}
                   </span>
-                  <span className="pill" style={{ color: c?.color, background: `${c?.color}1a` }}>
-                    {c?.label}
-                  </span>
-                  <span className="file-meta">
-                    {formatSize(f.size)}
-                    <br />
-                    {formatDate(f.mtime)}
-                  </span>
+                  <span className="file-meta">{formatDate(f.mtime)}</span>
                 </button>
-              )
-            })}
-            {!loading && visible.length === 0 && visibleFolders.length === 0 && (
-              <div className="empty">該当するファイルがありません</div>
-            )}
-            {truncated && (
-              <div className="empty">ファイル数が多いため、先頭 5,000 件のみ表示しています</div>
-            )}
+              ))}
+              {visible.map((f) => {
+                const c = categoryOf(f.ext, p.categories)
+                return (
+                  <button
+                    key={f.path}
+                    className={`file-row ${p.selected?.path === f.path ? 'selected' : ''}`}
+                    onClick={() => {
+                      p.onSelect(f)
+                      setPanel('preview')
+                    }}
+                  >
+                    <span className="file-icon" style={{ color: c?.color }}>
+                      {fileIcon(c)}
+                    </span>
+                    <span className="file-main">
+                      <span className="file-name">{f.name}</span>
+                      {f.rel ? <span className="file-rel">{f.rel}</span> : null}
+                    </span>
+                    <span className="pill" style={{ color: c?.color, background: `${c?.color}1a` }}>
+                      {c?.label}
+                    </span>
+                    <span className="file-meta">
+                      {formatSize(f.size)}
+                      <br />
+                      {formatDate(f.mtime)}
+                    </span>
+                  </button>
+                )
+              })}
+              {!loading && visible.length === 0 && visibleFolders.length === 0 && (
+                <div className="empty">該当するファイルがありません</div>
+              )}
+              {truncated && (
+                <div className="empty">ファイル数が多いため、先頭 5,000 件のみ表示しています</div>
+              )}
+            </div>
           </div>
         </section>
+        {splitterAfter('list')}
 
-        <section className="card preview-card">
-          <div className={`panel-tabs-row ${panel === 'git' ? 'hidden' : ''}`}>
-            <div className="panel-tabs">
-              <button
-                className={panel === 'preview' ? 'active' : ''}
-                onClick={() => setPanel('preview')}
-              >
-                <Eye size={15} /> プレビュー
-              </button>
-              <button
-                className={panel === 'terminal' ? 'active' : ''}
-                onClick={() => {
-                  setPanel('terminal')
-                  setTermMounted(true)
-                }}
-              >
-                <SquareTerminal size={15} /> ターミナル
-              </button>
+        <section {...paneProps('panel')} data-pane="panel">
+          <div className="card preview-card">
+            <div className={`panel-tabs-row ${panel === 'git' ? 'hidden' : ''}`}>
+              <div className="panel-tabs">
+                <button
+                  className={panel === 'preview' ? 'active' : ''}
+                  onClick={() => setPanel('preview')}
+                >
+                  <Eye size={15} /> プレビュー
+                </button>
+                <button
+                  className={panel === 'terminal' ? 'active' : ''}
+                  onClick={() => {
+                    setPanel('terminal')
+                    setTermMounted(true)
+                  }}
+                >
+                  <SquareTerminal size={15} /> ターミナル
+                </button>
+              </div>
+              <CollapseButton disabled={!canCollapse} onClick={() => collapse('panel')} />
             </div>
-            <MaxButton active={maximized === 'panel'} onClick={() => toggleMax('panel')} />
-          </div>
-          <div className={`panel-body ${panel === 'preview' ? '' : 'hidden'}`}>
-            {p.selected ? (
-              p.renderPreview(p.selected)
-            ) : (
-              <div className="preview-empty">
-                {p.emptyIcon}
-                <p>ファイルを選択するとここに内容が表示されます</p>
+            <div className={`panel-body ${panel === 'preview' ? '' : 'hidden'}`}>
+              {p.selected ? (
+                p.renderPreview(p.selected)
+              ) : (
+                <div className="preview-empty">
+                  {p.emptyIcon}
+                  <p>ファイルを選択するとここに内容が表示されます</p>
+                </div>
+              )}
+            </div>
+            {/* 一度開いたターミナルは、プレビューに戻っても動き続けるよう残しておく */}
+            {termMounted && (
+              <div className={`panel-body ${panel === 'terminal' ? '' : 'hidden'}`}>
+                <TerminalPanel
+                  cwd={p.currentDir}
+                  visible={panel === 'terminal'}
+                  inject={terminalInject}
+                  handleRef={termHandle}
+                />
+              </div>
+            )}
+            {gitMounted && (
+              <div className={`panel-body ${panel === 'git' ? '' : 'hidden'}`}>
+                <GitPanel
+                  dir={p.currentDir}
+                  active={panel === 'git'}
+                  backLabel={backPanel === 'terminal' ? 'ターミナル' : 'プレビュー'}
+                  onBack={() => setPanel(backPanel)}
+                  onChanged={p.onRefresh}
+                  terminal={{
+                    ensure: ensureTerminal,
+                    show: () => {
+                      setBackPanel('terminal')
+                      setPanel('terminal')
+                    }
+                  }}
+                  canCollapse={canCollapse}
+                  onCollapse={() => collapse('panel')}
+                />
               </div>
             )}
           </div>
-          {/* 一度開いたターミナルは、プレビューに戻っても動き続けるよう残しておく */}
-          {termMounted && (
-            <div className={`panel-body ${panel === 'terminal' ? '' : 'hidden'}`}>
-              <TerminalPanel
-                cwd={p.currentDir}
-                visible={panel === 'terminal'}
-                inject={terminalInject}
-                handleRef={termHandle}
-              />
-            </div>
-          )}
-          {gitMounted && (
-            <div className={`panel-body ${panel === 'git' ? '' : 'hidden'}`}>
-              <GitPanel
-                dir={p.currentDir}
-                active={panel === 'git'}
-                backLabel={backPanel === 'terminal' ? 'ターミナル' : 'プレビュー'}
-                onBack={() => setPanel(backPanel)}
-                onChanged={p.onRefresh}
-                terminal={{
-                  ensure: ensureTerminal,
-                  show: () => {
-                    setBackPanel('terminal')
-                    setPanel('terminal')
-                  }
-                }}
-                maximized={maximized === 'panel'}
-                onToggleMax={() => toggleMax('panel')}
-              />
-            </div>
-          )}
         </section>
       </div>
     </div>

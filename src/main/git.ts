@@ -3,7 +3,7 @@ import { execFile } from 'child_process'
 import { promises as fs, existsSync } from 'fs'
 import { join } from 'path'
 import type { GitBranches, GitFile, GitSetupOptions, GitStatus, GitStepLog } from '../shared/git'
-import { explainGitError } from '../shared/git'
+import { explainGitError, isStagedFile } from '../shared/git'
 
 export { explainGitError }
 
@@ -187,12 +187,32 @@ export async function gitSwitch(dir: string, name: string, create: boolean): Pro
   return must(create ? ['switch', '-c', target] : ['switch', target], dir)
 }
 
+/** 「追加 (add)」: 選んだファイルだけがステージされた状態にする (選ばれなかったものは取り消す) */
+export async function gitStage(dir: string, files: string[]): Promise<string> {
+  const st = await gitStatus(dir)
+  const want = new Set(files)
+  const all = st.files ?? []
+  const unstage = all
+    .filter((f) => !want.has(f.path) && isStagedFile(f))
+    .flatMap((f) => (f.from ? [f.path, f.from] : [f.path]))
+  if (unstage.length) {
+    if (st.hasCommits) await must(['reset', '-q', '--', ...unstage], dir)
+    else await must(['rm', '--cached', '-r', '-q', '--ignore-unmatch', '--', ...unstage], dir)
+  }
+  const add = all
+    .filter((f) => want.has(f.path))
+    .flatMap((f) => (f.from ? [f.path, f.from] : [f.path]))
+  if (add.length) await must(['add', '-A', '--', ...add], dir)
+  return `${files.length} 件を追加しました`
+}
+
 export async function gitCommit(
   dir: string,
   message: string,
-  files: string[] | 'all'
+  files: string[] | 'all' | 'staged'
 ): Promise<string> {
   if (!message.trim()) throw new Error('コミットメッセージを入力してください')
+  if (files === 'staged') return must(['commit', '-m', message], dir)
   if (files === 'all') {
     await must(['add', '-A'], dir)
     return must(['commit', '-m', message], dir)
