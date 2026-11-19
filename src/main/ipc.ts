@@ -20,7 +20,15 @@ import type { GitSetupOptions, SavedCommand } from '../shared/git'
 import { previewDocx, previewXlsx, previewPptx } from './previews'
 import { createFile } from './creators'
 import { openInVSCode } from './vscode'
-import { convertToPdf, htmlToPdf, detectEngines } from './pdfConvert'
+import {
+  compressPaths,
+  extractArchive,
+  listArchive,
+  movePaths,
+  renamePath,
+  trashPaths
+} from './fileManage'
+import { convertToPdf, htmlToPdf, detectEngines, warmUpPdf, pdfForPreview } from './pdfConvert'
 import {
   availableShells,
   createSession,
@@ -29,7 +37,7 @@ import {
   killSession
 } from './terminal'
 import type { CreateOptions, Result } from '../shared/types'
-import type { PdfHtmlOptions, PdfOptions } from '../shared/pdf'
+import type { PdfHtmlOptions, PdfKind, PdfOptions } from '../shared/pdf'
 
 /** 例外を { ok, error } 形式に包んでレンダラーへ返す */
 function handle<A extends unknown[], T>(
@@ -106,10 +114,18 @@ export function registerIpc(): void {
   handle('file:create', (_e, o: CreateOptions) => createFile(o))
 
   handle('pdf:engines', () => detectEngines())
+  handle('pdf:warmup', (_e, kinds: PdfKind[]) => warmUpPdf(kinds))
+  handle('pdf:forPreview', (_e, p: string) => pdfForPreview(p))
   handle('pdf:convert', (_e, p: string, o: PdfOptions) => convertToPdf(p, o))
   handle('pdf:fromHtml', (_e, html: string, o: PdfHtmlOptions) => htmlToPdf(html, o))
 
   handle('fs:mkdir', (_e, parent: string, name: string) => createFolder(parent, name))
+  handle('fs:trash', (_e, paths: string[]) => trashPaths(paths))
+  handle('fs:rename', (_e, p: string, name: string) => renamePath(p, name))
+  handle('fs:move', (_e, paths: string[], dest: string) => movePaths(paths, dest))
+  handle('fs:extract', (_e, p: string) => extractArchive(p))
+  handle('fs:compress', (_e, paths: string[]) => compressPaths(paths))
+  handle('fs:listArchive', (_e, p: string) => listArchive(p))
 
   /* ---------- コマンド一覧 ---------- */
   handle('commands:load', () => loadCommands())

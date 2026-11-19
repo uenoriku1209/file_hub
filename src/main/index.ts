@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { killAll } from './terminal'
+import { shutdownPdfWorkers } from './pdfConvert'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -59,6 +60,17 @@ app.whenReady().then(() => {
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+// 変換のために起動した Office を閉じてから終了する
+let shuttingDown = false
+app.on('before-quit', (e) => {
+  if (shuttingDown) return
+  shuttingDown = true
+  e.preventDefault()
+  shutdownPdfWorkers()
+    .catch(() => {})
+    .finally(() => app.quit())
 })
 
 app.on('window-all-closed', () => {

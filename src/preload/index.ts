@@ -7,8 +7,9 @@ import type {
   GitStepLog,
   SavedCommand
 } from '../shared/git'
-import type { PdfEngines, PdfHtmlOptions, PdfOptions, PdfResult } from '../shared/pdf'
+import type { PdfEngines, PdfHtmlOptions, PdfKind, PdfOptions, PdfResult } from '../shared/pdf'
 import type {
+  ArchiveListing,
   CreateOptions,
   DocxPreview,
   FsEntry,
@@ -48,6 +49,12 @@ const api: Api = {
 
   createFile: (o: CreateOptions) => call<string>('file:create', o),
   createFolder: (parent: string, name: string) => call<string>('fs:mkdir', parent, name),
+  trash: (paths: string[]) => call<void>('fs:trash', paths),
+  rename: (p: string, newName: string) => call<string>('fs:rename', p, newName),
+  move: (paths: string[], dest: string) => call<string[]>('fs:move', paths, dest),
+  extract: (p: string) => call<string>('fs:extract', p),
+  compress: (paths: string[]) => call<string>('fs:compress', paths),
+  listArchive: (p: string) => call<ArchiveListing>('fs:listArchive', p),
   loadCommands: () => call<SavedCommand[]>('commands:load'),
   saveCommands: (list: SavedCommand[]) => call<SavedCommand[]>('commands:save', list),
   git: {
@@ -74,6 +81,8 @@ const api: Api = {
   },
 
   pdfEngines: () => call<PdfEngines>('pdf:engines'),
+  warmUpPdf: (kinds: PdfKind[]) => call<void>('pdf:warmup', kinds),
+  pdfForPreview: (p: string) => call<string>('pdf:forPreview', p),
   convertToPdf: (p: string, o: PdfOptions) => call<PdfResult>('pdf:convert', p, o),
   htmlToPdf: (html: string, o: PdfHtmlOptions) => call<PdfResult>('pdf:fromHtml', html, o),
 

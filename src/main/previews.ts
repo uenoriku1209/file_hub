@@ -1,12 +1,8 @@
 import { promises as fs } from 'fs'
 import { posix } from 'path'
 import mammoth from 'mammoth'
-import ExcelJS from 'exceljs'
 import JSZip from 'jszip'
-import type { DocxPreview, SheetPreview, SlidePreview } from '../shared/types'
-
-const MAX_ROWS = 500
-const MAX_COLS = 60
+import type { DocxPreview, SlidePreview } from '../shared/types'
 
 export async function previewDocx(p: string): Promise<DocxPreview> {
   const result = await mammoth.convertToHtml(
@@ -23,32 +19,8 @@ export async function previewDocx(p: string): Promise<DocxPreview> {
   return { html: result.value, messages: result.messages.map((m) => m.message) }
 }
 
-export async function previewXlsx(p: string): Promise<SheetPreview[]> {
-  const wb = new ExcelJS.Workbook()
-  await wb.xlsx.readFile(p)
-  return wb.worksheets.map((ws) => {
-    const totalRows = ws.actualRowCount ? ws.rowCount : 0
-    const totalCols = ws.actualColumnCount ? ws.columnCount : 0
-    const rows: string[][] = []
-    const rLimit = Math.min(totalRows, MAX_ROWS)
-    const cLimit = Math.min(totalCols, MAX_COLS)
-    for (let r = 1; r <= rLimit; r++) {
-      const row = ws.getRow(r)
-      const cells: string[] = []
-      for (let c = 1; c <= cLimit; c++) {
-        let text: string
-        try {
-          text = row.getCell(c).text ?? ''
-        } catch {
-          text = ''
-        }
-        cells.push(text)
-      }
-      rows.push(cells)
-    }
-    return { name: ws.name, rows, totalRows, totalCols }
-  })
-}
+// Excel は書式も読む詳しい版 (xlsxPreview.ts)
+export { previewXlsx } from './xlsxPreview'
 
 function decodeXml(s: string): string {
   return s

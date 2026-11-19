@@ -5,6 +5,10 @@ export interface Category {
   color: string
 }
 
+/** 圧縮ファイル (Office・Code どちらの画面にも表示して、展開できるようにする) */
+export const ARCHIVE_EXTS = ['zip', '7z', 'rar', 'tar', 'gz', 'tgz', 'bz2', 'xz']
+const ARCHIVE: Category = { id: 'archive', label: 'ZIP', exts: ARCHIVE_EXTS, color: '#b0883a' }
+
 /** Office ページで扱うファイル */
 export const OFFICE_CATEGORIES: Category[] = [
   { id: 'pdf', label: 'PDF', exts: ['pdf'], color: '#e5636b' },
@@ -17,7 +21,8 @@ export const OFFICE_CATEGORIES: Category[] = [
     exts: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg'],
     color: '#9a6be0'
   },
-  { id: 'text', label: 'TEXT', exts: ['txt', 'log'], color: '#8796a5' }
+  { id: 'text', label: 'TEXT', exts: ['txt', 'log'], color: '#8796a5' },
+  ARCHIVE
 ]
 
 /** Code ページで扱うファイル */
@@ -60,7 +65,8 @@ export const CODE_CATEGORIES: Category[] = [
     exts: ['rb', 'php', 'swift', 'dart', 'lua', 'r', 'pl', 'scala', 'vb'],
     color: '#7a8a9a'
   },
-  { id: 'md', label: 'Markdown', exts: ['md', 'mdx', 'markdown'], color: '#18a39d' }
+  { id: 'md', label: 'Markdown', exts: ['md', 'mdx', 'markdown'], color: '#18a39d' },
+  ARCHIVE
 ]
 
 export function categoryOf(ext: string, cats: Category[]): Category | undefined {

@@ -6,7 +6,7 @@
 
 | 画面 | できること |
 |---|---|
-| **Office** | PDF / Word / Excel / PowerPoint / CSV / 画像 / テキストのプレビュー。「Word で編集」などのボタンで既定の Office アプリを起動。「新規作成」で Word・Excel・PowerPoint を作成（画像の挿入、Excel のシート名・シート数、PowerPoint のスライド数・タイトル、Word のページ数を指定可能） |
+| **Office** | PDF / Word / Excel / PowerPoint / CSV / 画像 / テキストのプレビュー。Word はページ・フォント・表・画像・ヘッダー/フッターまで Word に近い見た目（「テキスト」表示にも切り替え可）、Excel は色・罫線・結合セル・列幅・表示形式つきで、セルを選ぶと数式を表示、PowerPoint は図形・文字・画像を実際の配置どおりにスライドで表示。Office か LibreOffice があれば「PDF で正確に」で印刷イメージどおりに表示（一度作った PDF は使い回す）。「Word で編集」などのボタンで既定の Office アプリを起動。「新規作成」で Word・Excel・PowerPoint を作成（画像の挿入、Excel のシート名・シート数、PowerPoint のスライド数・タイトル、Word のページ数を指定可能） |
 | **Code** | `.ts` `.tsx` `.cpp` `.py` など各種ソースコードを Markdown のコードブロックとしてハイライト表示（`.md` は整形表示）。「Code Edit」で VS Code を起動 |
 | **ターミナル** | Office / Code 画面のプレビュー欄上部のタブで「ターミナル」に切り替えると、閲覧中のフォルダで作業できる。「追従」オンならフォルダを移動すると自動で `cd`。シェル（PowerShell / コマンドプロンプト / PowerShell 7 / Git Bash）の切替・再起動に対応。画面を切り替えても動き続ける |
 | **PDF化** | 各ファイルの「PDF化」ボタン、または「一括PDF化」で一覧に表示中のファイル（タグ・検索で絞り込んだもの）をまとめて変換。保存先（同じ場所 / 「PDF」フォルダ / 任意のフォルダ）と、同名ファイルの扱い（別名 / 上書き）を選択可能 |
@@ -14,6 +14,8 @@
 | **Git** | 右上の Git ボタン（枝分かれのアイコン）で、プレビュー欄が Git 画面に切り替わる（「戻る」でターミナル / プレビューに戻る）。「1. 送るファイルを選ぶ（add）→ 2. 記録する（commit）→ 3. 送る（push）」の順に、いまの操作だけが枠で囲まれ、終わると緑の線が次の段階へ伸びる。プッシュ・プルはターミナルで実行し、合言葉（パスフレーズ）を聞かれたら Git 画面に入力欄が出る。ブランチの切り替え・作成、履歴、リモート URL の変更（SSH → HTTPS 切り替え）にも対応。Git 管理されていないフォルダでは初期設定画面（リポジトリ作成・ブランチ名・.gitignore・初回コミット・リモート登録・プッシュ）を表示 |
 | **欄の幅の変更** | フォルダ・ファイル・プレビューの各欄の間のつまみをドラッグして幅を変更。端まで寄せて離す（または欄の右上のボタン）と、その欄は左の Office / Code タブの下にしまわれ、押すと元に戻る（2 つのときは 1:1、3 つそろうと標準の幅） |
 | **フォルダ作成** | ファイル一覧上部のフォルダ＋ボタンで、表示中のフォルダの中に新しいフォルダを作成 |
+| **ファイル操作** | ファイル・フォルダを右クリック（または行の「…」）で、開く・エクスプローラーで表示・名前を変更（F2）・移動・zip に圧縮・パスをコピー・ごみ箱に移動（Delete。Windows のごみ箱から戻せる）。移動は「移動…」で行き先を選ぶか、行をつまんで一覧のフォルダ／フォルダツリーに落とす（同じ名前があれば番号を付ける） |
+| **圧縮ファイル** | zip・7z・rar・tar などを一覧に表示。zip は中身をプレビューでき、「展開する」で同じ場所に展開（中身が 1 つのフォルダだけなら二重にしない。Windows で作った日本語名の zip にも対応）。7z・rar は 7-Zip がインストールされていれば展開できる |
 | 共通 | フォルダツリー、拡張子タグでの絞り込み（複数選択可）、ファイル名検索、サブフォルダを含めた一括検索、並び替え、ライト / ダークモード切替（左下のスイッチ） |
 
 ---
@@ -100,7 +102,10 @@ src/main/ipc.ts                      … 画面との通信
 src/main/previews.ts                 … Word / Excel / PowerPoint のプレビュー変換
 src/main/terminal.ts                 … ターミナル (node-pty)
 src/main/vscode.ts                   … VS Code の起動
-src/main/pdfConvert.ts               … PDF 変換 (Office / LibreOffice / 内蔵)
+src/main/pdfConvert.ts               … PDF 変換 (Office / LibreOffice / 内蔵)・プレビュー用 PDF
+src/main/officeWorker.ts             … Office を開いたまま変換する常駐ワーカー
+src/main/fileManage.ts               … ごみ箱・名前の変更・移動・zip の展開/圧縮
+src/main/xlsxPreview.ts              … Excel の書式つきプレビュー
 src/main/git.ts                      … Git 操作 (状態・コミット・プッシュ・ブランチ・初期設定)
 src/main/commands.ts                 … 登録コマンドの保存
 src/renderer/src/assets/app.css      … デザイン（ライト / ダーク）
@@ -161,7 +166,7 @@ npm run build:win  # dist\FileHub-1.0.0-setup.exe を作成
 
 | ファイル | 変換方法 |
 |---|---|
-| Word / Excel / PowerPoint / CSV | **Microsoft Office**（インストール済みの Office を裏で起動して書き出し。見た目が最も正確）。Office がない、または失敗した場合は **LibreOffice** を自動で使用 |
+| Word / Excel / PowerPoint / CSV | **Microsoft Office**（インストール済みの Office を裏で起動して書き出し。見た目が最も正確）。Office がない、または失敗した場合は **LibreOffice** を自動で使用。Office は一度起動したら開いたまま次々に変換し（変換画面を開いた時点で先に起動）、90 秒使わなければ自動で終了。LibreOffice は専用の設定を使い回して起動を速くしている |
 | 画像 | アプリ内蔵の機能で A4 1ページに収めて PDF 化（横長の画像は横向き） |
 | テキスト / ソースコード / Markdown | アプリ内蔵の機能で PDF 化（コードは色付き・長い行は折り返し、Markdown は整形） |
 

@@ -1,10 +1,12 @@
-import { BrowserWindow } from 'electron'
+import { app, BrowserWindow } from 'electron'
 import { spawn, execFile } from 'child_process'
 import { promises as fs, existsSync } from 'fs'
 import { tmpdir } from 'os'
+import { createHash } from 'crypto'
 import { join, extname, basename, delimiter } from 'path'
 import { pathToFileURL } from 'url'
 import { readImageInfo } from './imageSize'
+import { OfficeWorker, type OfficeKind } from './officeWorker'
 import {
   pdfKindOf,
   type PdfEngines,
@@ -116,79 +118,38 @@ function run(
 
 /* ---------------- Microsoft Office (COM) ---------------- */
 
-/**
- * PowerShell から Office を非表示で起動し、PDF に書き出す。
- * - パスは環境変数で渡す (日本語やスペースを含んでも安全)
- * - マクロは無効化して開く / 読み取り専用で開く
- * - 既にユーザーが開いている PowerPoint 等は終了させない
- */
-const OFFICE_SCRIPT = String.raw`
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$in = $env:FH_IN; $out = $env:FH_OUT; $kind = $env:FH_KIND
-$app = $null; $doc = $null; $quit = $true
-try {
-  switch ($kind) {
-    'word' {
-      $app = New-Object -ComObject Word.Application
-      if ($app.Documents.Count -gt 0) { $quit = $false }
-      $app.Visible = $false
-      $app.DisplayAlerts = 0
-      try { $app.AutomationSecurity = 3 } catch {}
-      $doc = $app.Documents.Open($in, $false, $true, $false)
-      $doc.ExportAsFixedFormat($out, 17)
-      $doc.Close($false)
-    }
-    'excel' {
-      $app = New-Object -ComObject Excel.Application
-      if ($app.Workbooks.Count -gt 0) { $quit = $false }
-      $app.Visible = $false
-      $app.DisplayAlerts = $false
-      try { $app.AutomationSecurity = 3 } catch {}
-      $doc = $app.Workbooks.Open($in, 0, $true)
-      $doc.ExportAsFixedFormat(0, $out)
-      $doc.Close($false)
-    }
-    'ppt' {
-      $app = New-Object -ComObject PowerPoint.Application
-      if ($app.Presentations.Count -gt 0) { $quit = $false }
-      try { $app.AutomationSecurity = 3 } catch {}
-      $doc = $app.Presentations.Open($in, -1, 0, 0)
-      $doc.SaveAs($out, 32)
-      $doc.Close()
-    }
-  }
-  Write-Output 'OK'
-} catch {
-  [Console]::Error.WriteLine($_.Exception.Message)
-  exit 1
-} finally {
-  if ($app -ne $null) {
-    if ($quit) { try { $app.Quit() } catch {} }
-    try { [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($app) } catch {}
-  }
-  [GC]::Collect()
-  [GC]::WaitForPendingFinalizers()
-}
-`
-
 const OFFICE_APP: Record<string, string> = {
   word: 'Microsoft Word',
   excel: 'Microsoft Excel',
   ppt: 'Microsoft PowerPoint'
 }
 
+/** Office を開いたまま次々に変換する常駐ワーカー (しばらく使わなければ自動で終了) */
+const officeWorker = new OfficeWorker()
+
+/** 変換画面を開いた時点で Office を起動しておく (1 件目を速くするため) */
+export async function warmUpPdf(kinds: PdfKind[]): Promise<void> {
+  const office = kinds.filter((k): k is OfficeKind => k === 'word' || k === 'excel' || k === 'ppt')
+  if (office.length === 0) return
+  const engines = await detectEngines()
+  if (engines.office) officeWorker.warm(office)
+}
+
+/** アプリ終了時に、変換のために起動した Office を閉じる */
+export function shutdownPdfWorkers(): Promise<void> {
+  return officeWorker.stop()
+}
+
 async function convertWithOffice(input: string, output: string, kind: PdfKind): Promise<void> {
-  const encoded = Buffer.from(OFFICE_SCRIPT, 'utf16le').toString('base64')
-  const r = await run(
-    'powershell.exe',
-    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encoded],
-    { ...process.env, FH_IN: input, FH_OUT: output, FH_KIND: kind }
-  )
-  if (r.code !== 0 || !existsSync(output)) {
-    const msg = r.stderr.trim().split(/\r?\n/).filter(Boolean).pop()
-    throw new Error(`${OFFICE_APP[kind]} での変換に失敗しました${msg ? `: ${msg}` : ''}`)
+  try {
+    await officeWorker.convert(kind as OfficeKind, input, output)
+  } catch (e) {
+    const msg = (e as Error).message.trim().split(/\r?\n/).filter(Boolean).pop()
+    throw new Error(`${OFFICE_APP[kind]} での変換に失敗しました${msg ? `: ${msg}` : ''}`, {
+      cause: e
+    })
   }
+  if (!existsSync(output)) throw new Error(`${OFFICE_APP[kind]} での変換に失敗しました`)
 }
 
 /* ---------------- LibreOffice ---------------- */
@@ -198,14 +159,46 @@ async function convertWithLibreOffice(
   input: string,
   output: string
 ): Promise<void> {
-  // 起動中の LibreOffice と競合しないよう、一時プロファイルと一時フォルダを使う
+  // 同じプロファイルを同時に使うと失敗するため、1 件ずつ順番に変換する
+  const job = loChain.then(() => libreOfficeOnce(soffice, input, output))
+  loChain = job.catch(() => {})
+  return job
+}
+
+let loChain: Promise<unknown> = Promise.resolve()
+
+async function libreOfficeOnce(soffice: string, input: string, output: string): Promise<void> {
+  // 起動中の LibreOffice と競合しないよう、File Hub 専用のプロファイルを使う。
+  // 毎回作り直すと初期化に時間がかかるため、作ったものを使い回す。
+  const profileDir = join(app.getPath('userData'), 'libreoffice-profile')
+  try {
+    await libreOfficeConvert(soffice, input, output, profileDir)
+  } catch (e) {
+    // プロファイルが壊れている (前回の強制終了など) 可能性があるので、作り直してもう一度
+    await fs.rm(profileDir, { recursive: true, force: true }).catch(() => {})
+    try {
+      await libreOfficeConvert(soffice, input, output, profileDir)
+    } catch {
+      throw e
+    }
+  }
+}
+
+async function libreOfficeConvert(
+  soffice: string,
+  input: string,
+  output: string,
+  profileDir: string
+): Promise<void> {
   const work = await fs.mkdtemp(join(tmpdir(), 'filehub-lo-'))
   try {
-    const profile = pathToFileURL(join(work, 'profile')).href
     const r = await run(soffice, [
-      `-env:UserInstallation=${profile}`,
+      `-env:UserInstallation=${pathToFileURL(profileDir).href}`,
       '--headless',
       '--norestore',
+      '--nologo',
+      '--nodefault',
+      '--nolockcheck',
       '--convert-to',
       'pdf',
       '--outdir',
@@ -319,4 +312,61 @@ export async function convertToPdf(input: string, o: PdfOptions): Promise<PdfRes
   }
   await convertWithLibreOffice(engines.libreoffice!, input, output)
   return { output, engine: 'LibreOffice' }
+}
+
+/* ---------------- プレビュー用の PDF (正確な見た目で表示するため) ---------------- */
+
+const PREVIEW_CACHE_MAX = 60
+
+/**
+ * Office 文書を PDF にして、プレビュー用に保存しておく。
+ * 同じファイル (更新日時・サイズが同じ) なら、前に作ったものを使い回す。
+ */
+export async function pdfForPreview(input: string): Promise<string> {
+  const kind = pdfKindOf(extname(input).slice(1).toLowerCase())
+  if (kind !== 'word' && kind !== 'excel' && kind !== 'ppt') throw new Error('この形式は対象外です')
+  const st = await fs.stat(input)
+  const key = createHash('sha1')
+    .update(`${input}|${st.mtimeMs}|${st.size}`)
+    .digest('hex')
+    .slice(0, 20)
+  const dir = join(app.getPath('userData'), 'preview-pdf')
+  const out = join(dir, `${key}.pdf`)
+  if (existsSync(out)) {
+    // 使ったものは新しい扱いにする (古いものから消すため)
+    const now = new Date()
+    await fs.utimes(out, now, now).catch(() => {})
+    return out
+  }
+  await fs.mkdir(dir, { recursive: true })
+  const engines = await detectEngines()
+  const tmp = join(dir, `${key}.tmp.pdf`)
+  try {
+    if (engines.office) {
+      try {
+        await convertWithOffice(input, tmp, kind)
+      } catch (e) {
+        if (!engines.libreoffice) throw e
+        await convertWithLibreOffice(engines.libreoffice, input, tmp)
+      }
+    } else if (engines.libreoffice) await convertWithLibreOffice(engines.libreoffice, input, tmp)
+    else throw new Error('Microsoft Office か LibreOffice が必要です')
+    await fs.rename(tmp, out)
+  } finally {
+    await fs.rm(tmp, { force: true }).catch(() => {})
+  }
+  void trimPreviewCache(dir)
+  return out
+}
+
+/** 古いプレビュー用 PDF を消して、数を抑える */
+async function trimPreviewCache(dir: string): Promise<void> {
+  const names = (await fs.readdir(dir)).filter((n) => n.endsWith('.pdf') && !n.endsWith('.tmp.pdf'))
+  if (names.length <= PREVIEW_CACHE_MAX) return
+  const stats = await Promise.all(
+    names.map(async (n) => ({ n, t: (await fs.stat(join(dir, n))).mtimeMs }))
+  )
+  stats.sort((a, b) => a.t - b.t)
+  for (const s of stats.slice(0, stats.length - PREVIEW_CACHE_MAX))
+    await fs.rm(join(dir, s.n), { force: true }).catch(() => {})
 }

@@ -59,6 +59,12 @@ export function PdfConvertModal({ files, onClose, onFinished }: Props): React.JS
       .catch(() => setEngines({ office: false, libreoffice: null }))
   }, [])
 
+  // 画面を開いた時点で、変換に使う Office を裏で起動しておく (1 件目を速くするため)
+  useEffect(() => {
+    const kinds = [...new Set(files.map((f) => pdfKindOf(f.ext)).filter((k) => k !== null))]
+    window.api.warmUpPdf(kinds).catch(() => {})
+  }, [files])
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && phase !== 'running') onClose()

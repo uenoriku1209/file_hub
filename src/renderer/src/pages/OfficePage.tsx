@@ -4,7 +4,8 @@ import type { FsEntry } from '../../../shared/types'
 import { FileBrowser } from '../components/FileBrowser'
 import { NewFileModal } from '../components/NewFileModal'
 import { PdfConvertModal, pdfConvertible } from '../components/PdfConvertModal'
-import { OFFICE_CATEGORIES, categoryOf, editLabel } from '../lib/fileTypes'
+import { ARCHIVE_EXTS, OFFICE_CATEGORIES, categoryOf, editLabel } from '../lib/fileTypes'
+import { ArchivePreview } from '../previews/ArchivePreview'
 import { PreviewShell } from '../previews/PreviewShell'
 import { PdfPreview } from '../previews/PdfPreview'
 import {
@@ -144,7 +145,11 @@ export function OfficePage({
               </>
             }
           >
-            {body(e)}
+            {ARCHIVE_EXTS.includes(e.ext) ? (
+              <ArchivePreview path={e.path} onExtracted={() => state.refresh()} />
+            ) : (
+              body(e)
+            )}
           </PreviewShell>
         )}
       />

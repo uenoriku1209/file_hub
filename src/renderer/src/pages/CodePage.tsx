@@ -3,7 +3,8 @@ import { FolderSearch, Code2, FileOutput, Files } from 'lucide-react'
 import type { FsEntry } from '../../../shared/types'
 import { PdfConvertModal, pdfConvertible } from '../components/PdfConvertModal'
 import { FileBrowser } from '../components/FileBrowser'
-import { CODE_CATEGORIES, categoryOf } from '../lib/fileTypes'
+import { ARCHIVE_EXTS, CODE_CATEGORIES, categoryOf } from '../lib/fileTypes'
+import { ArchivePreview } from '../previews/ArchivePreview'
 import { PreviewShell } from '../previews/PreviewShell'
 import { CodePreview } from '../previews/CodePreview'
 import { useToast } from '../lib/toast'
@@ -88,16 +89,22 @@ export function CodePage({
                 >
                   <FolderSearch size={17} />
                 </button>
-                <button className="btn" onClick={() => setPdfTargets([e])} title="PDF に変換">
-                  <FileOutput size={16} /> PDF化
-                </button>
+                {!ARCHIVE_EXTS.includes(e.ext) && (
+                  <button className="btn" onClick={() => setPdfTargets([e])} title="PDF に変換">
+                    <FileOutput size={16} /> PDF化
+                  </button>
+                )}
                 <button className="btn btn-primary" onClick={() => openCode(e.path)}>
                   <Code2 size={16} /> Code Edit
                 </button>
               </>
             }
           >
-            <CodePreview path={e.path} ext={e.ext} size={e.size} />
+            {ARCHIVE_EXTS.includes(e.ext) ? (
+              <ArchivePreview path={e.path} onExtracted={() => state.refresh()} />
+            ) : (
+              <CodePreview path={e.path} ext={e.ext} size={e.size} />
+            )}
           </PreviewShell>
         )}
       />

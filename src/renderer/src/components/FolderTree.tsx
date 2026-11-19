@@ -17,6 +17,9 @@ interface NodeProps {
   onSelect: (p: string) => void
   refreshKey: number
   defaultOpen?: boolean
+  /** ドラッグで運ばれてきたファイルの落とし先 (移動) */
+  dropTarget?: string | null
+  dropProps?: (dir: string) => React.HTMLAttributes<HTMLDivElement>
 }
 
 function TreeNode({
@@ -26,7 +29,9 @@ function TreeNode({
   current,
   onSelect,
   refreshKey,
-  defaultOpen
+  defaultOpen,
+  dropTarget,
+  dropProps
 }: NodeProps): React.JSX.Element {
   const [open, setOpen] = useState(!!defaultOpen)
   const [children, setChildren] = useState<FsEntry[] | null>(null)
@@ -53,10 +58,11 @@ function TreeNode({
   return (
     <div>
       <div
-        className={`tree-row ${selected ? 'selected' : ''}`}
+        className={`tree-row ${selected ? 'selected' : ''} ${dropTarget === path ? 'drop-target' : ''}`}
         style={{ paddingLeft: 8 + depth * 14 }}
         onClick={() => onSelect(path)}
         title={path}
+        {...dropProps?.(path)}
       >
         <button
           className={`tree-chevron ${open ? 'open' : ''} ${children && children.length === 0 ? 'empty' : ''}`}
@@ -84,6 +90,8 @@ function TreeNode({
             current={current}
             onSelect={onSelect}
             refreshKey={refreshKey}
+            dropTarget={dropTarget}
+            dropProps={dropProps}
           />
         ))}
     </div>
@@ -95,9 +103,18 @@ interface Props {
   current: string
   onSelect: (p: string) => void
   refreshKey: number
+  dropTarget?: string | null
+  dropProps?: (dir: string) => React.HTMLAttributes<HTMLDivElement>
 }
 
-export function FolderTree({ root, current, onSelect, refreshKey }: Props): React.JSX.Element {
+export function FolderTree({
+  root,
+  current,
+  onSelect,
+  refreshKey,
+  dropTarget,
+  dropProps
+}: Props): React.JSX.Element {
   return (
     <div className="tree">
       <TreeNode
@@ -108,6 +125,8 @@ export function FolderTree({ root, current, onSelect, refreshKey }: Props): Reac
         current={current}
         onSelect={onSelect}
         refreshKey={refreshKey}
+        dropTarget={dropTarget}
+        dropProps={dropProps}
         defaultOpen
       />
     </div>

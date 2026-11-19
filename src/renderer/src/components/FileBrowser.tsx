@@ -19,15 +19,27 @@ import {
   X,
   PanelLeftClose,
   FolderPlus,
-  GitBranch
+  GitBranch,
+  FileArchive,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  FolderInput,
+  FolderOutput,
+  ExternalLink,
+  FolderSearch,
+  Copy,
+  Package
 } from 'lucide-react'
 import type { FsEntry } from '../../../shared/types'
-import { type Category, categoryOf } from '../lib/fileTypes'
+import { type Category, ARCHIVE_EXTS, categoryOf } from '../lib/fileTypes'
 import { formatDate, formatSize, basename, parentDir, sepOf, errorMessage } from '../lib/format'
 import { FolderTree } from './FolderTree'
 import { TerminalPanel, type TerminalHandle } from './TerminalPanel'
 import { hidePane, visiblePanes, type PaneId, type PaneLayout } from '../lib/layout'
 import { GitPanel } from './GitPanel'
+import { ContextMenu, type MenuEntry } from './ContextMenu'
+import { MoveDialog } from './MoveDialog'
 import { useToast } from '../lib/toast'
 
 type SortKey = 'name' | 'mtime' | 'size'
@@ -102,6 +114,8 @@ export function fileIcon(cat?: Category): ReactNode {
       return <Presentation size={18} />
     case 'image':
       return <FileImage size={18} />
+    case 'archive':
+      return <FileArchive size={18} />
     case undefined:
       return <File size={18} />
     default:
@@ -244,6 +258,227 @@ export function FileBrowser(p: Props): React.JSX.Element {
       toast('error', errorMessage(e))
     }
   }
+
+  /* ---------- ファイル操作 (右クリックメニュー・F2・Delete・ドラッグで移動) ---------- */
+
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameText, setRenameText] = useState('')
+  const [moving, setMoving] = useState<FsEntry[] | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [busyOp, setBusyOp] = useState<string | null>(null)
+
+  /** 操作したものが選択中なら、選択を付け替える (null なら選択を外す) */
+  const followSelection = (oldPath: string, newPath: string | null): void => {
+    const sel = p.selected
+    if (!sel) return
+    if (sel.path === oldPath)
+      p.onSelect(newPath ? { ...sel, path: newPath, name: basename(newPath) } : null)
+  }
+
+  const startRename = (e: FsEntry): void => {
+    setRenaming(e.path)
+    setRenameText(e.name)
+  }
+  const commitRename = async (e: FsEntry): Promise<void> => {
+    const name = renameText.trim()
+    setRenaming(null)
+    if (!name || name === e.name) return
+    try {
+      const np = await window.api.rename(e.path, name)
+      toast('success', `「${name}」に名前を変更しました`)
+      followSelection(e.path, np)
+      p.onRefresh()
+    } catch (err) {
+      toast('error', `名前を変更できませんでした: ${errorMessage(err)}`)
+    }
+  }
+
+  const trash = async (e: FsEntry): Promise<void> => {
+    const what = e.isDir ? 'フォルダ' : 'ファイル'
+    if (
+      !confirm(`${what}「${e.name}」をごみ箱に移動しますか？\n（Windows のごみ箱から元に戻せます）`)
+    )
+      return
+    try {
+      await window.api.trash([e.path])
+      toast('success', `「${e.name}」をごみ箱に移動しました`)
+      followSelection(e.path, null)
+      p.onRefresh()
+    } catch (err) {
+      toast('error', `削除できませんでした: ${errorMessage(err)}`)
+    }
+  }
+
+  const moveTo = async (items: FsEntry[], dest: string): Promise<void> => {
+    try {
+      const moved = await window.api.move(
+        items.map((i) => i.path),
+        dest
+      )
+      items.forEach((i, k) => followSelection(i.path, moved[k]))
+      toast(
+        'success',
+        `${items.length === 1 ? `「${items[0].name}」` : `${items.length} 件`}を「${basename(dest) || dest}」に移動しました`
+      )
+      p.onRefresh()
+    } catch (err) {
+      toast('error', `移動できませんでした: ${errorMessage(err)}`)
+    }
+  }
+
+  const runOp = async (
+    label: string,
+    fn: () => Promise<string>,
+    done: (r: string) => string
+  ): Promise<void> => {
+    setBusyOp(label)
+    try {
+      const r = await fn()
+      toast('success', done(r))
+      p.onRefresh()
+    } catch (err) {
+      toast('error', `${label}できませんでした: ${errorMessage(err)}`)
+    } finally {
+      setBusyOp(null)
+    }
+  }
+  const extract = (e: FsEntry): Promise<void> =>
+    runOp(
+      '展開',
+      () => window.api.extract(e.path),
+      (d) => `「${basename(d)}」に展開しました`
+    )
+  const compress = (e: FsEntry): Promise<void> =>
+    runOp(
+      '圧縮',
+      () => window.api.compress([e.path]),
+      (z) => `「${basename(z)}」を作成しました`
+    )
+
+  const menuItems = (e: FsEntry): MenuEntry[] => {
+    const isArchive = !e.isDir && ARCHIVE_EXTS.includes(e.ext)
+    return [
+      e.isDir
+        ? { label: '開く', icon: <FolderOpen size={15} />, onClick: () => p.onCurrentDir(e.path) }
+        : {
+            label: '既定のアプリで開く',
+            icon: <ExternalLink size={15} />,
+            onClick: () => window.api.openPath(e.path)
+          },
+      {
+        label: 'エクスプローラーで表示',
+        icon: <FolderSearch size={15} />,
+        onClick: () => window.api.revealInFolder(e.path)
+      },
+      null,
+      {
+        label: '名前を変更',
+        icon: <Pencil size={15} />,
+        hint: 'F2',
+        onClick: () => startRename(e)
+      },
+      { label: '移動…', icon: <FolderInput size={15} />, onClick: () => setMoving([e]) },
+      ...(isArchive
+        ? [{ label: 'ここに展開', icon: <FolderOutput size={15} />, onClick: () => extract(e) }]
+        : [{ label: 'zip に圧縮', icon: <Package size={15} />, onClick: () => compress(e) }]),
+      {
+        label: 'パスをコピー',
+        icon: <Copy size={15} />,
+        onClick: () => {
+          navigator.clipboard.writeText(e.path)
+          toast('info', 'パスをコピーしました')
+        }
+      },
+      null,
+      {
+        label: 'ごみ箱に移動',
+        icon: <Trash2 size={15} />,
+        hint: 'Delete',
+        danger: true,
+        onClick: () => trash(e)
+      }
+    ]
+  }
+  const openMenu = (ev: React.MouseEvent, e: FsEntry): void => {
+    ev.preventDefault()
+    ev.stopPropagation()
+    setMenu({ x: ev.clientX, y: ev.clientY, entry: e })
+  }
+
+  /** 一覧でのキー操作: F2 で名前の変更、Delete でごみ箱へ */
+  const onRowKey = (ev: React.KeyboardEvent, e: FsEntry, open: () => void): void => {
+    if (renaming) return
+    if (ev.key === 'F2') {
+      ev.preventDefault()
+      startRename(e)
+    } else if (ev.key === 'Delete') {
+      ev.preventDefault()
+      trash(e)
+    } else if (ev.key === 'Enter' || ev.key === ' ') {
+      ev.preventDefault()
+      open()
+    } else if (ev.key === 'ContextMenu' || (ev.shiftKey && ev.key === 'F10')) {
+      ev.preventDefault()
+      const r = (ev.currentTarget as HTMLElement).getBoundingClientRect()
+      setMenu({ x: r.left + 40, y: r.bottom - 6, entry: e })
+    }
+  }
+
+  /** ドラッグで移動: 行をつまんで、一覧のフォルダかフォルダツリーに落とす */
+  const DRAG_TYPE = 'application/x-filehub-paths'
+  const dragProps = (
+    e: FsEntry
+  ): React.HTMLAttributes<HTMLDivElement> & { draggable: boolean } => ({
+    draggable: renaming !== e.path,
+    onDragStart: (ev) => {
+      ev.dataTransfer.setData(DRAG_TYPE, JSON.stringify([e.path]))
+      ev.dataTransfer.effectAllowed = 'move'
+    }
+  })
+  const dropProps = (dir: string): React.HTMLAttributes<HTMLDivElement> => ({
+    onDragOver: (ev) => {
+      if (!ev.dataTransfer.types.includes(DRAG_TYPE)) return
+      ev.preventDefault()
+      ev.dataTransfer.dropEffect = 'move'
+      setDropTarget(dir)
+    },
+    onDragLeave: () => setDropTarget((d) => (d === dir ? null : d)),
+    onDrop: (ev) => {
+      setDropTarget(null)
+      const raw = ev.dataTransfer.getData(DRAG_TYPE)
+      if (!raw) return
+      ev.preventDefault()
+      dropPaths(dir, JSON.parse(raw) as string[])
+    }
+  })
+  const dropPaths = (dir: string, paths: string[]): void => {
+    const items = paths
+      .filter((x) => x !== dir)
+      .map((x) => entries.find((e) => e.path === x) ?? ({ path: x, name: basename(x) } as FsEntry))
+    if (items.length) moveTo(items, dir)
+  }
+
+  const renameInput = (e: FsEntry): React.JSX.Element => (
+    <input
+      className="input rename-input"
+      autoFocus
+      value={renameText}
+      onChange={(ev) => setRenameText(ev.target.value)}
+      onClick={(ev) => ev.stopPropagation()}
+      onFocus={(ev) => {
+        // 拡張子の前までを選んだ状態にする
+        const dot = e.isDir ? -1 : e.name.lastIndexOf('.')
+        ev.currentTarget.setSelectionRange(0, dot > 0 ? dot : e.name.length)
+      }}
+      onKeyDown={(ev) => {
+        ev.stopPropagation()
+        if (ev.key === 'Enter') commitRename(e)
+        if (ev.key === 'Escape') setRenaming(null)
+      }}
+      onBlur={() => commitRename(e)}
+    />
+  )
 
   // フォルダ内容の読み込み
   useEffect(() => {
@@ -442,6 +677,8 @@ export function FileBrowser(p: Props): React.JSX.Element {
               current={p.currentDir}
               onSelect={p.onCurrentDir}
               refreshKey={p.refreshKey}
+              dropTarget={dropTarget}
+              dropProps={dropProps}
             />
           </div>
         </section>
@@ -528,36 +765,69 @@ export function FileBrowser(p: Props): React.JSX.Element {
 
             <div className="file-list">
               {visibleFolders.map((f) => (
-                <button
+                <div
                   key={f.path}
-                  className="file-row folder"
-                  onClick={() => p.onCurrentDir(f.path)}
+                  role="button"
+                  tabIndex={0}
+                  className={`file-row folder ${dropTarget === f.path ? 'drop-target' : ''}`}
+                  onClick={() => renaming !== f.path && p.onCurrentDir(f.path)}
+                  onContextMenu={(ev) => openMenu(ev, f)}
+                  onKeyDown={(ev) => onRowKey(ev, f, () => p.onCurrentDir(f.path))}
+                  title={f.name}
+                  {...dragProps(f)}
+                  {...dropProps(f.path)}
                 >
                   <span className="file-icon folder-icon">
                     <Folder size={18} />
                   </span>
                   <span className="file-main">
-                    <span className="file-name">{f.name}</span>
+                    {renaming === f.path ? (
+                      renameInput(f)
+                    ) : (
+                      <span className="file-name">{f.name}</span>
+                    )}
                   </span>
                   <span className="file-meta">{formatDate(f.mtime)}</span>
-                </button>
+                  <span
+                    role="button"
+                    className="row-more"
+                    title="操作メニュー"
+                    onClick={(ev) => openMenu(ev, f)}
+                  >
+                    <MoreHorizontal size={16} />
+                  </span>
+                </div>
               ))}
               {visible.map((f) => {
                 const c = categoryOf(f.ext, p.categories)
+                const select = (): void => {
+                  p.onSelect(f)
+                  setPanel('preview')
+                }
                 return (
-                  <button
+                  <div
                     key={f.path}
+                    role="button"
+                    tabIndex={0}
                     className={`file-row ${p.selected?.path === f.path ? 'selected' : ''}`}
-                    onClick={() => {
+                    onClick={() => renaming !== f.path && select()}
+                    onDoubleClick={() => renaming !== f.path && window.api.openPath(f.path)}
+                    onContextMenu={(ev) => {
                       p.onSelect(f)
-                      setPanel('preview')
+                      openMenu(ev, f)
                     }}
+                    onKeyDown={(ev) => onRowKey(ev, f, select)}
+                    {...dragProps(f)}
                   >
                     <span className="file-icon" style={{ color: c?.color }}>
                       {fileIcon(c)}
                     </span>
                     <span className="file-main">
-                      <span className="file-name">{f.name}</span>
+                      {renaming === f.path ? (
+                        renameInput(f)
+                      ) : (
+                        <span className="file-name">{f.name}</span>
+                      )}
                       {f.rel ? <span className="file-rel">{f.rel}</span> : null}
                     </span>
                     <span className="pill" style={{ color: c?.color, background: `${c?.color}1a` }}>
@@ -568,7 +838,15 @@ export function FileBrowser(p: Props): React.JSX.Element {
                       <br />
                       {formatDate(f.mtime)}
                     </span>
-                  </button>
+                    <span
+                      role="button"
+                      className="row-more"
+                      title="操作メニュー（右クリックでも開けます）"
+                      onClick={(ev) => openMenu(ev, f)}
+                    >
+                      <MoreHorizontal size={16} />
+                    </span>
+                  </div>
                 )
               })}
               {!loading && visible.length === 0 && visibleFolders.length === 0 && (
@@ -648,6 +926,33 @@ export function FileBrowser(p: Props): React.JSX.Element {
           </div>
         </section>
       </div>
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menuItems(menu.entry)}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {moving && p.rootDir && (
+        <MoveDialog
+          root={p.rootDir}
+          targets={moving}
+          initial={parentDir(moving[0].path)}
+          onClose={() => setMoving(null)}
+          onMove={(dest) => {
+            const items = moving
+            setMoving(null)
+            moveTo(items, dest)
+          }}
+        />
+      )}
+      {busyOp && (
+        <div className="busy-toast">
+          <RefreshCw size={14} className="spin" /> {busyOp}しています…
+        </div>
+      )}
     </div>
   )
 }

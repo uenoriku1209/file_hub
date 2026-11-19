@@ -37,37 +37,49 @@ export function Sidebar({
 
       <nav className="nav">
         {NAV.map(({ id, label, icon: Icon }) => (
-          <div key={id} className="nav-group">
-            <button
-              className={`nav-item ${page === id ? 'active' : ''}`}
-              onClick={() => onPage(id)}
-              title={label}
-            >
-              <span className="nav-icon">
-                <Icon size={20} strokeWidth={1.8} />
-              </span>
-              <span className="nav-label">{label}</span>
-            </button>
-            {id !== 'commands' && docked[id].length > 0 && (
-              <div className="nav-dock">
-                {docked[id].map((pane) => {
-                  const PaneIcon = PANE_ICON[pane]
-                  return (
-                    <button
-                      key={pane}
-                      className="dock-item"
-                      onClick={() => onRestore(id, pane)}
-                      title={`${label} の「${PANE_LABEL[pane]}」欄を戻す`}
-                    >
-                      <PaneIcon size={15} />
-                      <span>{PANE_LABEL[pane]}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          <button
+            key={id}
+            className={`nav-item ${page === id ? 'active' : ''}`}
+            onClick={() => onPage(id)}
+            title={label}
+          >
+            <span className="nav-icon">
+              <Icon size={20} strokeWidth={1.8} />
+            </span>
+            <span className="nav-label">{label}</span>
+          </button>
         ))}
+
+        {/* しまった欄: 既定のタブの下に境界線を引き、その下に並べる */}
+        {(docked.office.length > 0 || docked.code.length > 0) && (
+          <>
+            <div className="dock-sep" title="しまった欄（押すと元に戻ります）">
+              <span>しまった欄</span>
+            </div>
+            {(['office', 'code'] as const).map(
+              (pg) =>
+                docked[pg].length > 0 && (
+                  <div key={pg} className="nav-dock">
+                    <span className="dock-page">{pg === 'office' ? 'Office' : 'Code'}</span>
+                    {docked[pg].map((pane) => {
+                      const PaneIcon = PANE_ICON[pane]
+                      return (
+                        <button
+                          key={pane}
+                          className="dock-item"
+                          onClick={() => onRestore(pg, pane)}
+                          title={`${pg === 'office' ? 'Office' : 'Code'} の「${PANE_LABEL[pane]}」欄を戻す`}
+                        >
+                          <PaneIcon size={15} />
+                          <span>{PANE_LABEL[pane]}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+            )}
+          </>
+        )}
       </nav>
 
       <div className="sidebar-bottom">

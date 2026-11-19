@@ -169,7 +169,7 @@ export function NewFileModal({ dir, onClose, onCreated }: Props): React.JSX.Elem
                 <span className="kind-icon" style={{ color, background: `${color}1a` }}>
                   <Icon size={20} />
                 </span>
-                {label}
+                <span className="kind-label">{label}</span>
               </button>
             ))}
           </div>
