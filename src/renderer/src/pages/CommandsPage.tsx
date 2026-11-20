@@ -1,3 +1,4 @@
+import { MOD_KEY } from '../lib/platform'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Plus,
@@ -30,7 +31,10 @@ const SAMPLES: [string, string][] = [
   ['git switch -c ブランチ名', '新しいブランチを作って切り替える'],
   ['npm install', '依存パッケージをインストールする'],
   ['npm run dev', '開発モードで起動する'],
-  ['npm run build:win', 'Windows 用の .exe を作る']
+  ['npm run build:win', 'Windows 用の .exe を作る'],
+  ['npm run build:mac', 'Mac 用の .dmg を作る（Mac 上で実行）'],
+  ['uv sync', 'Python の環境（.venv）を uv.lock のとおりに作る'],
+  ['uv run main.py', 'Python のプログラムを uv の環境で実行する']
 ]
 
 function newId(): string {
@@ -179,7 +183,7 @@ export function CommandsPage({ onSendToTerminal }: Props): React.JSX.Element {
       </div>
       <div className="key-row end">
         <span className="muted small-text">
-          Ctrl+Enter で保存 ／ 複数行のコマンドも登録できます
+          {MOD_KEY}Enter で保存 ／ 複数行のコマンドも登録できます
         </span>
         <div className="spacer" />
         <button className="btn small" onClick={() => setEditing(null)}>

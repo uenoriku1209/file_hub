@@ -1,3 +1,4 @@
+import { isMac } from '../lib/platform'
 import { useEffect, useRef, useState } from 'react'
 import { Terminal, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
@@ -217,9 +218,10 @@ export function TerminalPanel({ cwd, visible, inject, handleRef }: Props): React
       if (idRef.current !== null) window.api.terminal.resize(idRef.current, cols, rows)
     })
 
-    // Ctrl+C: 選択中ならコピー / Ctrl+V: 貼り付け
+    // Ctrl+C (Mac は ⌘C): 選択中ならコピー / Ctrl+V (⌘V): 貼り付け
+    // Mac の Ctrl+C はそのままシェルに送る (実行中のコマンドを止める)
     term.attachCustomKeyEventHandler((ev) => {
-      if (ev.type !== 'keydown' || !ev.ctrlKey) return true
+      if (ev.type !== 'keydown' || !(isMac ? ev.metaKey : ev.ctrlKey)) return true
       if (ev.key === 'c' && term.hasSelection()) {
         navigator.clipboard.writeText(term.getSelection())
         term.clearSelection()

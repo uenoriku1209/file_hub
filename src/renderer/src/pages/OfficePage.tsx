@@ -18,6 +18,7 @@ import {
   Unsupported
 } from '../previews/OfficePreviews'
 import { useToast } from '../lib/toast'
+import { REVEAL_LABEL } from '../lib/platform'
 import { basename, errorMessage, parentDir } from '../lib/format'
 import type { BrowserState } from '../App'
 import type { PaneLayout } from '../lib/layout'
@@ -129,7 +130,7 @@ export function OfficePage({
               <>
                 <button
                   className="btn-icon"
-                  title="エクスプローラーで表示"
+                  title={REVEAL_LABEL}
                   onClick={() => window.api.revealInFolder(e.path)}
                 >
                   <FolderSearch size={17} />

@@ -7,6 +7,14 @@ import type {
   GitStepLog,
   SavedCommand
 } from '../shared/git'
+import type {
+  DevEnv,
+  DevLog,
+  PackageAction,
+  ProjectInfo,
+  ProjectOptions,
+  UvInstallMethod
+} from '../shared/devenv'
 import type { PdfEngines, PdfHtmlOptions, PdfKind, PdfOptions, PdfResult } from '../shared/pdf'
 import type {
   ArchiveListing,
@@ -87,6 +95,22 @@ const api: Api = {
   htmlToPdf: (html: string, o: PdfHtmlOptions) => call<PdfResult>('pdf:fromHtml', html, o),
 
   setTheme: (mode: 'light' | 'dark') => ipcRenderer.send('theme:set', mode),
+
+  devenv: {
+    detect: () => call<DevEnv>('devenv:detect'),
+    installUv: (method: UvInstallMethod, job: string) =>
+      call<string>('devenv:installUv', method, job),
+    create: (o: ProjectOptions, job: string) => call<string>('devenv:create', o, job),
+    info: (dir: string) => call<ProjectInfo | null>('devenv:info', dir),
+    packageAction: (dir: string, action: PackageAction, job: string) =>
+      call<ProjectInfo | null>('devenv:package', dir, action, job),
+    cancel: (job: string) => ipcRenderer.send('devenv:cancel', job),
+    onLog: (cb: (log: DevLog) => void) => {
+      const l = (_: unknown, log: DevLog): void => cb(log)
+      ipcRenderer.on('devenv:log', l)
+      return () => ipcRenderer.removeListener('devenv:log', l)
+    }
+  },
 
   terminal: {
     shells: () => call<ShellInfo[]>('pty:shells'),

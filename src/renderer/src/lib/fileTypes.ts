@@ -49,7 +49,7 @@ export const CODE_CATEGORIES: Category[] = [
   {
     id: 'data',
     label: 'JSON / YAML',
-    exts: ['json', 'jsonc', 'yaml', 'yml', 'toml', 'xml', 'ini', 'cfg'],
+    exts: ['json', 'jsonc', 'yaml', 'yml', 'toml', 'xml', 'ini', 'cfg', 'lock'],
     color: '#6a8a3a'
   },
   {

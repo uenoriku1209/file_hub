@@ -1,3 +1,4 @@
+import { which } from './shellEnv'
 import { shell } from 'electron'
 import { execFile } from 'child_process'
 import { createWriteStream, existsSync, promises as fs } from 'fs'
@@ -149,15 +150,17 @@ export async function listArchive(p: string): Promise<ArchiveListing> {
   }
 }
 
-/** 7-Zip の場所 (なければ null) */
+/** 7-Zip の場所 (なければ null)。macOS / Linux では Homebrew などで入れた 7zz / 7z を探す */
 function find7z(): string | null {
-  if (process.platform !== 'win32') return null
-  for (const r of [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']]) {
-    if (!r) continue
-    const p = join(r, '7-Zip', '7z.exe')
-    if (existsSync(p)) return p
+  if (process.platform === 'win32') {
+    for (const r of [process.env['ProgramFiles'], process.env['ProgramFiles(x86)']]) {
+      if (!r) continue
+      const p = join(r, '7-Zip', '7z.exe')
+      if (existsSync(p)) return p
+    }
+    return which('7z')
   }
-  return null
+  return which('7zz') ?? which('7z')
 }
 
 function run(file: string, args: string[], cwd?: string): Promise<void> {
@@ -198,6 +201,14 @@ export async function extractArchive(p: string): Promise<string> {
     if (ext === 'zip' && size <= ZIP_IN_MEMORY_LIMIT) await extractZip(p, work)
     else {
       const seven = find7z()
+      const isTar = /^(tar|gz|tgz|bz2|xz)$/.test(ext)
+      const need7z = `${ext} の展開には 7-Zip が必要です（${
+        process.platform === 'win32'
+          ? 'https://7-zip.org/'
+          : process.platform === 'darwin'
+            ? 'ターミナルで brew install sevenzip'
+            : 'p7zip などのパッケージ'
+      }）`
       if (seven) await run(seven, ['x', '-y', '-bd', `-o${work}`, p])
       else if (
         process.platform === 'win32' &&
@@ -205,14 +216,24 @@ export async function extractArchive(p: string): Promise<string> {
       )
         // Windows 標準の tar (bsdtar)。7z・rar は Windows のバージョンによっては使えない
         await run('tar.exe', ['-xf', p, '-C', work]).catch((e) => {
-          throw new Error(
-            ext === '7z' || ext === 'rar'
-              ? `${ext} の展開には 7-Zip（https://7-zip.org/）が必要です`
-              : (e as Error).message,
-            { cause: e }
-          )
+          throw new Error(ext === '7z' || ext === 'rar' ? need7z : (e as Error).message, {
+            cause: e
+          })
         })
-      else throw new Error(`${ext} の展開には 7-Zip（https://7-zip.org/）が必要です`)
+      else if (process.platform === 'darwin' && ext === 'zip')
+        // macOS 標準の ditto (Finder と同じ方法で展開する)
+        await run('/usr/bin/ditto', ['-x', '-k', p, work])
+      else if (process.platform === 'darwin' && (isTar || ext === '7z' || ext === 'rar'))
+        // macOS 標準の tar は bsdtar なので 7z なども読めることが多い
+        await run('/usr/bin/tar', ['-xf', p, '-C', work]).catch((e) => {
+          throw new Error(ext === '7z' || ext === 'rar' ? need7z : (e as Error).message, {
+            cause: e
+          })
+        })
+      else if (process.platform === 'linux' && isTar) await run('tar', ['-xf', p, '-C', work])
+      else if (process.platform === 'linux' && ext === 'zip' && which('unzip'))
+        await run('unzip', ['-q', p, '-d', work])
+      else throw new Error(need7z)
     }
 
     const items = await fs.readdir(work)

@@ -36,7 +36,16 @@ import {
   resizeSession,
   killSession
 } from './terminal'
+import {
+  cancelJob,
+  createProject,
+  detectEnv,
+  installUv,
+  packageAction,
+  projectInfo
+} from './devenv'
 import type { CreateOptions, Result } from '../shared/types'
+import type { DevLog, PackageAction, ProjectOptions, UvInstallMethod } from '../shared/devenv'
 import type { PdfHtmlOptions, PdfKind, PdfOptions } from '../shared/pdf'
 
 /** 例外を { ok, error } 形式に包んでレンダラーへ返す */
@@ -155,6 +164,25 @@ export function registerIpc(): void {
       if (!e.sender.isDestroyed()) e.sender.send('git:setupStep', log)
     })
   )
+
+  /* ---------- 開発環境 (プロジェクト作成・パッケージ) ---------- */
+  const logTo =
+    (sender: Electron.WebContents, job: string) =>
+    (kind: DevLog['kind'], text: string): void => {
+      if (!sender.isDestroyed()) sender.send('devenv:log', { job, kind, text } satisfies DevLog)
+    }
+  handle('devenv:detect', () => detectEnv())
+  handle('devenv:installUv', (e, method: UvInstallMethod, job: string) =>
+    installUv(method, job, logTo(e.sender, job))
+  )
+  handle('devenv:create', (e, o: ProjectOptions, job: string) =>
+    createProject(o, job, logTo(e.sender, job))
+  )
+  handle('devenv:info', (_e, dir: string) => projectInfo(dir))
+  handle('devenv:package', (e, dir: string, action: PackageAction, job: string) =>
+    packageAction(dir, action, job, logTo(e.sender, job))
+  )
+  ipcMain.on('devenv:cancel', (_e, job: string) => cancelJob(job))
 
   handle('pty:shells', () => availableShells())
   handle('pty:create', (e, opts: { shellId?: string; cwd?: string; cols: number; rows: number }) =>

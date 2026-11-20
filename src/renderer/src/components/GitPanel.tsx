@@ -1,3 +1,4 @@
+import { isMac, isWin } from '../lib/platform'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft,
@@ -235,8 +236,11 @@ export function GitPanel(p: Props): React.JSX.Element {
       <div className="git-section">
         <h3>Git がインストールされていません</h3>
         <p className="muted small-text">
-          https://git-scm.com/ から「Git for Windows」をインストールし、File Hub
-          を再起動してください（設定は初期値のままで大丈夫です）。
+          {isMac
+            ? 'ターミナルで xcode-select --install（または brew install git）を実行してから、File Hub を再起動してください。'
+            : isWin
+              ? 'https://git-scm.com/ から「Git for Windows」をインストールし、File Hub を再起動してください（設定は初期値のままで大丈夫です）。'
+              : 'パッケージマネージャー（apt など）で git をインストールし、File Hub を再起動してください。'}
         </p>
       </div>
     )

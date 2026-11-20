@@ -9,6 +9,14 @@ import type {
   SlidePreview
 } from './types'
 import type { GitBranches, GitSetupOptions, GitStatus, GitStepLog, SavedCommand } from './git'
+import type {
+  DevEnv,
+  DevLog,
+  PackageAction,
+  ProjectInfo,
+  ProjectOptions,
+  UvInstallMethod
+} from './devenv'
 import type { PdfEngines, PdfHtmlOptions, PdfKind, PdfOptions, PdfResult } from './pdf'
 
 /** プリロードからレンダラーに公開する API */
@@ -66,6 +74,19 @@ export interface Api {
   convertToPdf(p: string, o: PdfOptions): Promise<PdfResult>
   htmlToPdf(html: string, o: PdfHtmlOptions): Promise<PdfResult>
   setTheme(mode: 'light' | 'dark'): void
+  devenv: {
+    /** このパソコンで使える Node・パッケージマネージャー・uv・Python */
+    detect(): Promise<DevEnv>
+    /** uv をインストールして、そのバージョンを返す */
+    installUv(method: UvInstallMethod, job: string): Promise<string>
+    /** プロジェクトを作って、そのフォルダを返す */
+    create(o: ProjectOptions, job: string): Promise<string>
+    /** uv / Node のプロジェクトなら、その情報 (それ以外は null) */
+    info(dir: string): Promise<ProjectInfo | null>
+    packageAction(dir: string, action: PackageAction, job: string): Promise<ProjectInfo | null>
+    cancel(job: string): void
+    onLog(cb: (log: DevLog) => void): () => void
+  }
   terminal: {
     shells(): Promise<ShellInfo[]>
     create(opts: {

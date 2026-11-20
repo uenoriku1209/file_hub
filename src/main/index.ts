@@ -5,6 +5,7 @@ import icon from '../../resources/icon.png?asset'
 import { registerIpc } from './ipc'
 import { killAll } from './terminal'
 import { shutdownPdfWorkers } from './pdfConvert'
+import { fixPath } from './shellEnv'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -42,7 +43,7 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   electronApp.setAppUserModelId('com.filehub.app')
 
   app.on('browser-window-created', (_, window) => {
@@ -54,6 +55,8 @@ app.whenReady().then(() => {
     nativeTheme.themeSource = mode
   })
 
+  // macOS で Finder から起動しても git / uv / node などが見つかるよう PATH を整える
+  await fixPath().catch(() => {})
   registerIpc()
   createWindow()
 

@@ -41,6 +41,7 @@ import { GitPanel } from './GitPanel'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import { MoveDialog } from './MoveDialog'
 import { useToast } from '../lib/toast'
+import { DELETE_KEY, REVEAL_LABEL, TRASH_NAME, isMac } from '../lib/platform'
 
 type SortKey = 'name' | 'mtime' | 'size'
 
@@ -67,9 +68,12 @@ interface Props {
   /** 3 つの欄の表示・幅 */
   layout: PaneLayout
   onLayout: (l: PaneLayout) => void
+  /** プレビュー・ターミナルの横に足すタブ (例: プロジェクトのパッケージ管理)。
+   *  key が変わって新しく現れたときは、そのタブに自動で切り替える */
+  extraPanel?: { key: string; label: string; icon: ReactNode; node: ReactNode } | null
 }
 
-type Panel = 'preview' | 'terminal' | 'git'
+type Panel = 'preview' | 'terminal' | 'git' | 'extra'
 /** 欄どうしの間の「つまみ」の幅 (px) */
 const SPLIT = 16
 /** これより細くすると、離したときに欄をしまう (px) */
@@ -134,7 +138,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const [sort, setSort] = useState<SortKey>('name')
   const [panel, setPanel] = useState<Panel>('preview')
   // Git 画面の「戻る」で戻る先 (プレビュー or ターミナル)
-  const [backPanel, setBackPanel] = useState<'preview' | 'terminal'>('preview')
+  const [backPanel, setBackPanel] = useState<'preview' | 'terminal' | 'extra'>('preview')
   const [termMounted, setTermMounted] = useState(false)
   const [gitMounted, setGitMounted] = useState(false)
   const browserRef = useRef<HTMLDivElement>(null)
@@ -231,6 +235,16 @@ export function FileBrowser(p: Props): React.JSX.Element {
     style: { flex: `${sizes[id]} 1 0px` }
   })
 
+  // プロジェクトのフォルダに入ったら、そのタブを出す (ターミナル・Git を使っているときはそのまま)
+  const extraKey = p.extraPanel?.key ?? null
+  useEffect(() => {
+    if (extraKey) setPanel((cur) => (cur === 'preview' ? 'extra' : cur))
+    else {
+      setPanel((cur) => (cur === 'extra' ? 'preview' : cur))
+      setBackPanel((b) => (b === 'extra' ? 'preview' : b))
+    }
+  }, [extraKey])
+
   // コマンド画面から送られたらターミナルを開く
   const { terminalInject } = p
   useEffect(() => {
@@ -297,12 +311,14 @@ export function FileBrowser(p: Props): React.JSX.Element {
   const trash = async (e: FsEntry): Promise<void> => {
     const what = e.isDir ? 'フォルダ' : 'ファイル'
     if (
-      !confirm(`${what}「${e.name}」をごみ箱に移動しますか？\n（Windows のごみ箱から元に戻せます）`)
+      !confirm(
+        `${what}「${e.name}」を${TRASH_NAME}に移動しますか？\n（${TRASH_NAME}から元に戻せます）`
+      )
     )
       return
     try {
       await window.api.trash([e.path])
-      toast('success', `「${e.name}」をごみ箱に移動しました`)
+      toast('success', `「${e.name}」を${TRASH_NAME}に移動しました`)
       followSelection(e.path, null)
       p.onRefresh()
     } catch (err) {
@@ -367,7 +383,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
             onClick: () => window.api.openPath(e.path)
           },
       {
-        label: 'エクスプローラーで表示',
+        label: REVEAL_LABEL,
         icon: <FolderSearch size={15} />,
         onClick: () => window.api.revealInFolder(e.path)
       },
@@ -392,9 +408,9 @@ export function FileBrowser(p: Props): React.JSX.Element {
       },
       null,
       {
-        label: 'ごみ箱に移動',
+        label: `${TRASH_NAME}に移動`,
         icon: <Trash2 size={15} />,
-        hint: 'Delete',
+        hint: DELETE_KEY,
         danger: true,
         onClick: () => trash(e)
       }
@@ -412,7 +428,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
     if (ev.key === 'F2') {
       ev.preventDefault()
       startRename(e)
-    } else if (ev.key === 'Delete') {
+    } else if (ev.key === 'Delete' || (isMac && ev.metaKey && ev.key === 'Backspace')) {
       ev.preventDefault()
       trash(e)
     } else if (ev.key === 'Enter' || ev.key === ' ') {
@@ -587,7 +603,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
         <div className="welcome card">
           <div className="welcome-icon">{p.emptyIcon}</div>
           <h2>フォルダを選択してください</h2>
-          <p>エクスプローラーからフォルダを選ぶと、中のファイルとサブフォルダが表示されます。</p>
+          <p>フォルダを選ぶと、中のファイルとサブフォルダが表示されます。</p>
           <button className="btn btn-primary" onClick={p.onPickRoot}>
             <FolderOpen size={18} /> フォルダを選択
           </button>
@@ -879,6 +895,14 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 >
                   <SquareTerminal size={15} /> ターミナル
                 </button>
+                {p.extraPanel && (
+                  <button
+                    className={`extra-tab ${panel === 'extra' ? 'active' : ''}`}
+                    onClick={() => setPanel('extra')}
+                  >
+                    {p.extraPanel.icon} {p.extraPanel.label}
+                  </button>
+                )}
               </div>
               <CollapseButton disabled={!canCollapse} onClick={() => collapse('panel')} />
             </div>
@@ -892,6 +916,11 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 </div>
               )}
             </div>
+            {p.extraPanel && (
+              <div className={`panel-body ${panel === 'extra' ? '' : 'hidden'}`}>
+                {p.extraPanel.node}
+              </div>
+            )}
             {/* 一度開いたターミナルは、プレビューに戻っても動き続けるよう残しておく */}
             {termMounted && (
               <div className={`panel-body ${panel === 'terminal' ? '' : 'hidden'}`}>
@@ -908,7 +937,13 @@ export function FileBrowser(p: Props): React.JSX.Element {
                 <GitPanel
                   dir={p.currentDir}
                   active={panel === 'git'}
-                  backLabel={backPanel === 'terminal' ? 'ターミナル' : 'プレビュー'}
+                  backLabel={
+                    backPanel === 'terminal'
+                      ? 'ターミナル'
+                      : backPanel === 'extra'
+                        ? (p.extraPanel?.label ?? 'プレビュー')
+                        : 'プレビュー'
+                  }
                   onBack={() => setPanel(backPanel)}
                   onChanged={p.onRefresh}
                   terminal={{
