@@ -19,6 +19,7 @@ import {
   X,
   PanelLeftClose,
   FolderPlus,
+  LayoutPanelLeft,
   GitBranch,
   FileArchive,
   MoreHorizontal,
@@ -40,6 +41,7 @@ import { hidePane, visiblePanes, type PaneId, type PaneLayout } from '../lib/lay
 import { GitPanel } from './GitPanel'
 import { ContextMenu, type MenuEntry } from './ContextMenu'
 import { MoveDialog } from './MoveDialog'
+import { OrganizeModal } from './OrganizeModal'
 import { useToast } from '../lib/toast'
 import { DELETE_KEY, REVEAL_LABEL, TRASH_NAME, isMac } from '../lib/platform'
 
@@ -148,6 +150,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
     closing: PaneId | null
   } | null>(null)
   const [newFolder, setNewFolder] = useState<string | null>(null)
+  const [organizing, setOrganizing] = useState(false)
   const termHandle = useRef<TerminalHandle | null>(null)
 
   /** ターミナルを (まだなら裏で) 起動し、使えるようになるまで待つ */
@@ -731,7 +734,7 @@ export function FileBrowser(p: Props): React.JSX.Element {
                     checked={recursive}
                     onChange={(e) => setRecursive(e.target.checked)}
                   />
-                  <Layers size={14} /> サブフォルダも含む
+                  <Layers size={14} /> <span className="opt-label">サブフォルダも含む</span>
                 </label>
                 <select
                   className="select"
@@ -742,6 +745,13 @@ export function FileBrowser(p: Props): React.JSX.Element {
                   <option value="mtime">更新日順</option>
                   <option value="size">サイズ順</option>
                 </select>
+                <button
+                  className="btn small organize-btn"
+                  onClick={() => setOrganizing(true)}
+                  title="ファイル一括整理：フォルダを作って、ファイルやフォルダをまとめて移動する"
+                >
+                  <LayoutPanelLeft size={14} /> <span className="opt-label">一括整理</span>
+                </button>
                 <button
                   className="btn-icon small"
                   onClick={() => setNewFolder('')}
@@ -968,6 +978,14 @@ export function FileBrowser(p: Props): React.JSX.Element {
           y={menu.y}
           items={menuItems(menu.entry)}
           onClose={() => setMenu(null)}
+        />
+      )}
+      {organizing && p.currentDir && (
+        <OrganizeModal
+          startDir={p.currentDir}
+          rootDir={p.rootDir}
+          onClose={() => setOrganizing(false)}
+          onApplied={p.onRefresh}
         />
       )}
       {moving && p.rootDir && (

@@ -36,6 +36,7 @@ import {
   resizeSession,
   killSession
 } from './terminal'
+import { applyOrganize } from './organize'
 import {
   cancelJob,
   createProject,
@@ -44,7 +45,7 @@ import {
   packageAction,
   projectInfo
 } from './devenv'
-import type { CreateOptions, Result } from '../shared/types'
+import type { CreateOptions, OrganizePlan, Result } from '../shared/types'
 import type { DevLog, PackageAction, ProjectOptions, UvInstallMethod } from '../shared/devenv'
 import type { PdfHtmlOptions, PdfKind, PdfOptions } from '../shared/pdf'
 
@@ -90,6 +91,7 @@ export function registerIpc(): void {
   })
 
   handle('fs:list', (_e, dir: string) => listDir(dir))
+  handle('fs:organize', (_e, plan: OrganizePlan) => applyOrganize(plan))
   handle('fs:scan', (_e, dir: string) => scanDir(dir))
   handle('fs:readBytes', (_e, p: string, limit?: number) => readBytes(p, limit))
   handle('fs:exists', async (_e, p: string) => {

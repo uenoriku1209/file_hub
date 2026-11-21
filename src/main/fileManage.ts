@@ -23,7 +23,7 @@ export function checkName(name: string): string | null {
 }
 
 /** 同じ名前があれば「名前 (2).ext」のように番号を付ける */
-async function uniquePath(dir: string, name: string): Promise<string> {
+export async function uniquePath(dir: string, name: string): Promise<string> {
   const ext = extname(name)
   const base = name.slice(0, name.length - ext.length)
   let target = join(dir, name)
@@ -32,7 +32,7 @@ async function uniquePath(dir: string, name: string): Promise<string> {
 }
 
 /** child が parent の中 (または同じ) か */
-function isInsideOrSame(child: string, parent: string): boolean {
+export function isInsideOrSame(child: string, parent: string): boolean {
   const rel = relative(resolve(parent), resolve(child))
   return rel === '' || (!rel.startsWith('..') && !rel.includes(':') && !rel.startsWith(sep))
 }
@@ -69,17 +69,21 @@ export async function movePaths(paths: string[], destDir: string): Promise<strin
     if (isInsideOrSame(destDir, p))
       throw new Error(`「${basename(p)}」を、その中のフォルダには移動できません`)
     const target = await uniquePath(destDir, basename(p))
-    try {
-      await fs.rename(p, target)
-    } catch (e) {
-      // 別のドライブへは rename できないので、コピーしてから元を消す
-      if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e
-      await fs.cp(p, target, { recursive: true, errorOnExist: true, force: false })
-      await fs.rm(p, { recursive: true, force: true })
-    }
+    await moveOne(p, target)
     out.push(target)
   }
   return out
+}
+
+/** 1 つを target (存在しないパス) へ移動する。別のドライブならコピーしてから元を消す */
+export async function moveOne(src: string, target: string): Promise<void> {
+  try {
+    await fs.rename(src, target)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'EXDEV') throw e
+    await fs.cp(src, target, { recursive: true, errorOnExist: true, force: false })
+    await fs.rm(src, { recursive: true, force: true })
+  }
 }
 
 /* ---------------- 圧縮ファイル ---------------- */

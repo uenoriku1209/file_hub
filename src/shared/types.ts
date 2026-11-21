@@ -148,3 +148,24 @@ export interface ArchiveListing {
   /** 7-Zip がインストールされているか */
   sevenZip: boolean
 }
+
+/* ---------------- ファイル一括整理 ---------------- */
+
+/**
+ * 整理の計画。パスはすべて「実行前の実際の場所」で表す。
+ * (移動するフォルダの中に新しいフォルダを作る場合も、移動前の場所で書く)
+ */
+export interface OrganizePlan {
+  /** 新しく作るフォルダ */
+  mkdirs: string[]
+  /** 移動 (並びの順に実行する) */
+  moves: { from: string; toDir: string; name: string }[]
+}
+
+export interface OrganizeResult {
+  created: number
+  moved: number
+  /** 名前が重なって番号を付けたもの */
+  renamed: { from: string; to: string }[]
+  errors: { path: string; message: string }[]
+}

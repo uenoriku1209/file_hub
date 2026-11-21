@@ -620,6 +620,18 @@ button:disabled {
   gap: 8px;
   width: 100%;
   justify-content: space-between;
+  container-type: inline-size;
+}
+/* 欄が狭いときは、ボタンの文字を隠してアイコンだけにする */
+@container (max-width: 470px) {
+  .organize-btn .opt-label {
+    display: none;
+  }
+}
+@container (max-width: 380px) {
+  .chip-toggle .opt-label {
+    display: none;
+  }
 }
 .chip-toggle {
   display: inline-flex;
@@ -3416,4 +3428,237 @@ div.file-row:focus-visible {
   box-shadow:
     var(--inset),
     inset 0 0 0 1px rgba(229, 99, 107, 0.4);
+}
+
+/* ---------------- ファイル一括整理 ---------------- */
+
+.organize-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.organize-modal {
+  width: min(1180px, calc(100vw - 40px));
+  height: min(820px, calc(100vh - 40px));
+  display: flex;
+  flex-direction: column;
+}
+.organize-body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  padding: 0 22px 14px;
+}
+.org-pane {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--card-2);
+}
+.org-pane.left {
+  box-shadow: inset 0 0 0 1.5px var(--accent-soft);
+}
+.org-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.org-pane-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.org-pane.left .org-pane-title {
+  color: var(--accent-text);
+}
+.org-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+.org-crumbs > .btn-icon {
+  flex: none;
+  margin-right: 4px;
+}
+.org-crumb {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+}
+.org-crumb button {
+  padding: 3px 6px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.org-crumb button:hover {
+  background: var(--card);
+}
+.org-crumb button.current {
+  font-weight: 700;
+  color: var(--text);
+}
+.org-newdirs {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.org-newdirs textarea {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 8px 12px;
+  resize: none;
+  line-height: 1.5;
+  font-size: 13px;
+}
+.org-newdirs .btn {
+  flex: none;
+  height: auto;
+}
+.org-all {
+  margin-left: 4px;
+}
+.org-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--card);
+}
+.org-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.org-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+.org-row:hover {
+  background: var(--card-2);
+}
+.org-row.selected {
+  background: var(--accent-soft);
+}
+.org-row input[type='checkbox'] {
+  accent-color: var(--accent);
+  flex: none;
+}
+.org-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--muted);
+}
+.org-row.dir .org-icon,
+.org-pane.right .org-row .org-icon:has(.lucide-folder) {
+  color: var(--accent-text);
+}
+.org-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.org-name.link:hover {
+  text-decoration: underline;
+}
+.org-row.new .org-name,
+.org-row.moved .org-name {
+  font-weight: 600;
+}
+.org-row.new {
+  background: rgba(20, 184, 166, 0.08);
+}
+.org-row.moved {
+  background: rgba(99, 132, 230, 0.08);
+}
+.org-badge {
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.org-badge.new {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.org-badge.moved {
+  color: #4f6fd6;
+  background: rgba(99, 132, 230, 0.14);
+}
+.org-move {
+  flex: none;
+  color: var(--accent-text);
+}
+.org-move:not(:disabled):hover {
+  background: var(--accent-soft);
+}
+.org-row.planned .org-name {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(127, 127, 127, 0.5);
+}
+.org-dest {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #4f6fd6;
+}
+.org-result {
+  margin: 0 22px 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(229, 99, 107, 0.1);
+  color: var(--danger);
+  font-size: 12.5px;
+  max-height: 120px;
+  overflow: auto;
+}
+.org-result ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+.org-summary {
+  margin-left: 6px;
+}
+.org-hint {
+  margin: 2px 4px 6px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  line-height: 1.6;
 }

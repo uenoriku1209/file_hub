@@ -3,6 +3,8 @@ import type {
   CreateOptions,
   DocxPreview,
   FsEntry,
+  OrganizePlan,
+  OrganizeResult,
   ScanResult,
   SheetPreview,
   ShellInfo,
@@ -25,6 +27,8 @@ export interface Api {
   selectFolder(title?: string): Promise<string | null>
   pickImages(): Promise<string[]>
   listDir(dir: string): Promise<FsEntry[]>
+  /** 一括整理の計画を実行する */
+  organize(plan: OrganizePlan): Promise<OrganizeResult>
   scanDir(dir: string): Promise<ScanResult>
   readBytes(p: string, limit?: number): Promise<Uint8Array>
   exists(p: string): Promise<boolean>

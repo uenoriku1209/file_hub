@@ -21,6 +21,8 @@ import type {
   CreateOptions,
   DocxPreview,
   FsEntry,
+  OrganizePlan,
+  OrganizeResult,
   Result,
   ScanResult,
   SheetPreview,
@@ -42,6 +44,7 @@ const api: Api = {
   pickImages: () => call<string[]>('dialog:pickImages'),
 
   listDir: (dir: string) => call<FsEntry[]>('fs:list', dir),
+  organize: (plan: OrganizePlan) => call<OrganizeResult>('fs:organize', plan),
   scanDir: (dir: string) => call<ScanResult>('fs:scan', dir),
   readBytes: (p: string, limit?: number) => call<Uint8Array>('fs:readBytes', p, limit),
   exists: (p: string) => call<boolean>('fs:exists', p),
