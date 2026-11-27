@@ -36,7 +36,8 @@
 - `npm install` → `npm run dev` で起動、`npm run build:mac` で `.dmg` を作れます。
 - Finder から起動しても、ターミナルと同じ PATH（Homebrew の `/opt/homebrew/bin`、`~/.local/bin` など）を読み込むので、git・uv・node が見つかります。
 - PDF 化は LibreOffice（`/Applications/LibreOffice.app`）を使います（Microsoft Office を使った変換は Windows のみ）。
-- 署名していない `.dmg` は初回に「開発元を確認できない」と出ます。アプリを右クリック →「開く」で起動できます。
+- 署名していない `.dmg` は、初回に開けないことがあります（自分の Mac でビルドしたものは、たいていそのまま開けます）。その場合は「システム設定」→「プライバシーとセキュリティ」を下までスクロールし、「このまま開く」を押してください。
+- ターミナルで `posix_spawnp failed` と出る場合は、`npm install` をやり直すか、`node scripts/fix-node-pty.mjs` を実行してください（node-pty の Mac 用ファイルに実行の許可を付けます）。
 
 > ターミナル機能で使う `node-pty` は Windows 用のビルド済みバイナリを同梱しているため、**Visual Studio Build Tools や Python のインストールは不要**です。
 
